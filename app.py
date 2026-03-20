@@ -5,27 +5,23 @@ from datetime import datetime
 
 st.set_page_config(page_title="Check-in Logística | Grupo SC", layout="centered")
 
-# --- NOME DO ARQUIVO (DEVE SER IGUAL AO GITHUB) ---
-ARQUIVO_EXCEL = "Lista_Colab.xlsx"
-
-# Função para ajudar a gente a debugar se o arquivo sumiu
-def verificar_arquivos():
-    arquivos_no_servidor = os.listdir('.')
-    if ARQUIVO_EXCEL not in arquivos_no_servidor:
-        st.error(f"❌ Arquivo '{ARQUIVO_EXCEL}' não encontrado no servidor.")
-        st.write("Arquivos detectados no GitHub:", arquivos_no_servidor)
-        return False
-    return True
+# --- AJUSTE DINÂMICO DE CAMINHO ---
+# O comando os.path.join garante que ele procure na mesma pasta do script
+diretorio_atual = os.path.dirname(os.path.abspath(__file__))
+ARQUIVO_EXCEL = os.path.join(diretorio_atual, "Lista_Colab.xlsx")
 
 @st.cache_data
 def carregar_dados():
-    if verificar_arquivos():
+    if os.path.exists(ARQUIVO_EXCEL):
         try:
             return pd.ExcelFile(ARQUIVO_EXCEL)
         except Exception as e:
-            st.error(f"Erro ao ler o Excel: {e}")
+            st.error(f"Erro ao ler o arquivo: {e}")
             return None
-    return None
+    else:
+        st.error(f"❌ O arquivo '{ARQUIVO_EXCEL}' não foi encontrado.")
+        st.info(f"Arquivos na pasta atual: {os.listdir(diretorio_atual)}")
+        return None
 
 xls = carregar_dados()
 
@@ -79,13 +75,13 @@ if xls:
                         "Observacao": f"Setor: {nova_area}"
                     }])], ignore_index=True)
                 
-                st.success("Processado!")
+                st.success("Chamada processada com sucesso!")
                 csv = resumo.to_csv(index=False).encode('utf-8-sig')
                 st.download_button("📥 Baixar Relatório", csv, f"Chamada_{lider}.csv", "text/csv")
 
     # --- ÁREA ADMIN ---
     if senha_admin == "1234":
-        if st.sidebar.button("Ver Pendentes"):
+        if st.sidebar.button("Ver Pendentes na Base"):
             df_pendentes = pd.read_excel(xls, sheet_name='Pendentes de Inclusão')
-            st.write("### 📂 Aba Pendentes")
+            st.write("### 📂 Colaboradores Pendentes")
             st.dataframe(df_pendentes)
