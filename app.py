@@ -57,7 +57,7 @@ if senha_admin == "1234":
 
 # --- INTERFACE PRINCIPAL ---
 st.title("📋 Lista de Presença Digital")
-st.caption("Unidade Sumaré | Registro Automático no Sheets")
+st.caption("Unidade Sumaré | Registro Automático")
 
 lider = st.selectbox("Selecione o Líder:", ["-- Selecione --"] + ABAS_LIDERES)
 
