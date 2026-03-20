@@ -6,7 +6,7 @@ import urllib.parse
 
 # 1. Configuração da página: Começa fechada (collapsed)
 st.set_page_config(
-    page_title="Check-in Logística | Grupo SC", 
+    page_title="Check-in Logística | Grupo SC - Panpharma", 
     layout="centered",
     initial_sidebar_state="collapsed" 
 )
