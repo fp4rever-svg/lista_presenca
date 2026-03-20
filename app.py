@@ -4,14 +4,29 @@ import requests
 from datetime import datetime
 import urllib.parse
 
-st.set_page_config(page_title="Check-in Logística | Grupo SC", layout="centered")
+# 1. Configuração da página: Começa fechada (collapsed)
+st.set_page_config(
+    page_title="Check-in Logística | Grupo SC", 
+    layout="centered",
+    initial_sidebar_state="collapsed" 
+)
 
-# --- OCULTAR ELEMENTOS TÉCNICOS ---
+# --- CSS: Esconde o desnecessário, mantém o controle da Sidebar ---
 hide_st_style = """
             <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
+            #MainMenu {visibility: hidden;} /* Menu de 3 pontos */
+            footer {visibility: hidden;}    /* Rodapé do Streamlit */
+            
+            /* Remove a barra colorida do topo mas mantém o botão da Sidebar */
+            header {
+                background-color: rgba(0,0,0,0);
+                height: 3rem;
+            }
+            
+            /* Ajuste para o botão da Sidebar não sumir no mobile */
+            .st-emotion-cache-zq5wmm {
+                visibility: visible !important;
+            }
             </style>
             """
 st.markdown(hide_st_style, unsafe_allow_html=True)
@@ -19,7 +34,7 @@ st.markdown(hide_st_style, unsafe_allow_html=True)
 # --- CONFIGURAÇÕES ---
 SHEET_ID = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbz3J-m4rTKD0Wkr58B2qDsGS81RwZl7-jt3HegpTBI5Fg1mHBJLzoHTvY4D2OW5ZXuClA/exec"
-
+# ... restante do código ...
 def get_sheet_url(aba):
     lider_limpo = urllib.parse.quote(aba)
     return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={lider_limpo}"
