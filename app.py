@@ -39,7 +39,7 @@ def get_sheet_url(aba):
     lider_limpo = urllib.parse.quote(aba)
     return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={lider_limpo}"
 
-ABAS_LIDERES = ["Leticia", "Renato","Lais Alves","Thiago","Carol",]
+ABAS_LIDERES = ["Carol", "Gabriel / Elisangela","Lais Alves","Leticia","Renato","Thiago"]
 
 # --- BARRA LATERAL (PAINEL DO ANALISTA) ---
 st.sidebar.header("🔐 Painel Administrativo")
