@@ -47,14 +47,45 @@ senha_admin = st.sidebar.text_input("Senha de Analista", type="password")
 
 if senha_admin == "1234":
     st.sidebar.success("Acesso Liberado")
-    if st.sidebar.button("Verificar Pendentes"):
-        try:
-            df_p = pd.read_csv(get_sheet_url("Pendentes"))
-            st.write("### 📂 Colaboradores Pendentes de Inclusão")
-            st.dataframe(df_p)
-        except:
-            st.error("Aba 'Pendentes' não encontrada na planilha.")
+    
+    # ... (Botão de pendentes que já existe) ...
 
+    st.sidebar.markdown("---")
+    st.sidebar.write("📊 *Exportação Consolidada*")
+    
+    if st.sidebar.button("Gerar Excel Unificado"):
+        with st.spinner('Consolidando todas as abas...'):
+            lista_frames = []
+            
+            for l in ABAS_LIDERES:
+                try:
+                    url = get_sheet_url(l)
+                    # Lemos a aba do líder
+                    temp_df = pd.read_csv(url)
+                    # Forçamos o nome da primeira coluna e adicionamos quem é o líder
+                    temp_df.rename(columns={temp_df.columns[0]: 'Colaborador'}, inplace=True)
+                    temp_df['Líder Responsável'] = l  # Adiciona uma coluna para saber de quem é a equipe
+                    
+                    lista_frames.append(temp_df)
+                except:
+                    st.sidebar.warning(f"Não foi possível ler a aba de {l}")
+
+            if lista_frames:
+                # Unifica tudo (empilha as tabelas)
+                df_unificado = pd.concat(lista_frames, ignore_index=True)
+                
+                # Criamos o arquivo Excel na memória (BytesIO) para o Streamlit baixar
+                import io
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df_unificado.to_excel(writer, index=False, sheet_name='Consolidado_Geral')
+                
+                st.sidebar.download_button(
+                    label="📥 Baixar Excel Unificado",
+                    data=buffer.getvalue(),
+                    file_name=f"Relatorio_Consolidado_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 # --- INTERFACE PRINCIPAL ---
 st.title("📋 Lista de Presença Digital")
 st.caption("Unidade Nova Odessa | Registro Automático")
