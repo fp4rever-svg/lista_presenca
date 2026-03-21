@@ -88,7 +88,7 @@ if senha_admin == "1234":
                 )
 # --- INTERFACE PRINCIPAL ---
 st.title("📋 Lista de Presença Digital")
-st.caption("Unidade Nova Odessa | Registro Automático by Keisão Sapatão")
+st.caption("Unidade Nova Odessa | Registro Automático")
 
 lider = st.selectbox("Selecione o Líder:", ["-- Selecione --"] + ABAS_LIDERES)
 
