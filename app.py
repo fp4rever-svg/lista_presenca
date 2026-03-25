@@ -129,7 +129,7 @@ with st.sidebar:
 
 # --- INTERFACE PRINCIPAL ---
 st.title("📋 Lista de Presença Digital")
-st.caption("Unidade Sumaré | Registro Direto no Google Sheets")
+st.caption("Unidade Nova Odessa | Registro de Presença")
 
 lider_selecionado = st.selectbox("Selecione seu nome (Líder):", ["-- Selecione --"] + ABAS_LIDERES)
 
