@@ -115,7 +115,7 @@ with st.sidebar:
                     st.download_button(
                         label="📥 Baixar Excel Geral",
                         data=output.getvalue(),
-                        file_name=f"Relatorio_Logistica_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                        file_name=f"Relatorio_Presença_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
         
