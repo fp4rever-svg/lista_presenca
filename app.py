@@ -45,24 +45,26 @@ with st.sidebar:
     if senha == "1234":
         st.success("Acesso Liberado")
         
-        # --- MONITORAMENTO DE STATUS DIÁRIO ---
+# --- MONITORAMENTO DE STATUS DIÁRIO (Ajustado) ---
         st.subheader("📅 Status de Hoje")
-        data_hoje = datetime.now().strftime("%d/%m") # Procura o dia/mês na coluna D
+        # Agora buscamos a data no formato exato que o Script salva
+        data_hoje = datetime.now().strftime("%d/%m/%Y") 
         
         for l in ABAS_LIDERES:
             try:
                 url_check = get_sheet_url(l)
                 df_check = pd.read_csv(url_check)
-                # Verifica a 4ª coluna (Data/Hora) - índice 3
-                coluna_data = df_check.iloc[:, 3].dropna()
-                if not coluna_data.empty and data_hoje in str(coluna_data.iloc[-1]):
+                
+                # Verifica a 4ª coluna (Data) - índice 3
+                # Convertemos para string e limpamos espaços para garantir a comparação
+                coluna_data = df_check.iloc[:, 3].astype(str).str.strip()
+                
+                if not coluna_data.empty and data_hoje in coluna_data.values:
                     st.write(f"✅ **{l}**: Enviado")
                 else:
                     st.write(f"❌ **{l}**: Pendente")
             except:
                 st.write(f"⚠️ **{l}**: Erro ao ler aba")
-        
-        st.markdown("---")
         
         # --- EXPORTAÇÃO UNIFICADA ---
         if st.button("📊 Gerar Excel Unificado"):
