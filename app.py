@@ -45,26 +45,34 @@ with st.sidebar:
     if senha == "1234":
         st.success("Acesso Liberado")
         
-# --- MONITORAMENTO DE STATUS DIÁRIO (Ajustado) ---
+# --- MONITORAMENTO DE STATUS DIÁRIO (VERSÃO BLINDADA) ---
         st.subheader("📅 Status de Hoje")
-        # Agora buscamos a data no formato exato que o Script salva
-        data_hoje = datetime.now().strftime("%d/%m/%Y") 
+        
+        # Pegamos o dia e o mês atual (ex: 24/03)
+        hoje_curto = datetime.now().strftime("%d/%m")
         
         for l in ABAS_LIDERES:
             try:
                 url_check = get_sheet_url(l)
-                df_check = pd.read_csv(url_check)
+                # Forçamos o pandas a ler tudo como texto (string) para evitar erros de data
+                df_check = pd.read_csv(url_check, dtype=str)
                 
-                # Verifica a 4ª coluna (Data) - índice 3
-                # Convertemos para string e limpamos espaços para garantir a comparação
-                coluna_data = df_check.iloc[:, 3].astype(str).str.strip()
-                
-                if not coluna_data.empty and data_hoje in coluna_data.values:
-                    st.write(f"✅ **{l}**: Enviado")
+                # Verificamos a 4ª coluna (índice 3 - Coluna D)
+                if not df_check.empty and df_check.shape[1] >= 4:
+                    coluna_d = df_check.iloc[:, 3].fillna("").astype(str)
+                    
+                    # Verificamos se "hoje" aparece em qualquer linha da coluna D
+                    enviado_hoje = any(hoje_curto in data_celula for data_celula in coluna_d)
+                    
+                    if enviado_hoje:
+                        st.write(f"✅ **{l}**: Enviado")
+                    else:
+                        st.write(f"❌ **{l}**: Pendente")
                 else:
-                    st.write(f"❌ **{l}**: Pendente")
-            except:
-                st.write(f"⚠️ **{l}**: Erro ao ler aba")
+                    st.write(f"❌ **{l}**: Sem dados")
+            except Exception as e:
+                st.write(f"⚠️ **{l}**: Erro na leitura")
+
         
         # --- EXPORTAÇÃO UNIFICADA ---
         if st.button("📊 Gerar Excel Unificado"):
