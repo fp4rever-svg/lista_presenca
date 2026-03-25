@@ -113,7 +113,7 @@ else:
         data_hoje = datetime.now().strftime("%d/%m/%Y")
         
         with col1:
-            st.write("**Status de Envio (Hoje):data_hoje**")
+            st.write("**Status de Envio (Hoje):**")
             for l in LIDERES:
                 try:
                     df_check = pd.read_csv(get_sheet_url(l), dtype=str)
