@@ -45,22 +45,19 @@ with st.sidebar:
     if senha == "1234":
         st.success("Acesso Liberado")
         
-# --- BOTÃO PARA LIMPAR DADOS (RESET MANUAL) ---
+# --- BOTÃO PARA LIMPAR DADOS (DENTRO DA SENHA ADMIN) ---
         st.sidebar.markdown("---")
-        st.sidebar.warning("⚠️ **Zona de Perigo**")
-        if st.sidebar.button("🧹 Limpar Colunas B, C, D, E"):
-            # O Apps Script geralmente requer um GET ou POST específico para funções extras
-            # Mas para facilitar, vamos usar o parâmetro 'tipo' que já configuramos
+        st.sidebar.warning("⚠️ **Limpeza de Turno**")
+        if st.sidebar.button("🧹 Resetar Planilhas (B, C, D e F)"):
             try:
                 payload_limpar = {"tipo": "limpar_tudo"}
-                with st.spinner('Limpando planilhas...'):
+                with st.spinner('Limpando dados...'):
                     response = requests.post(URL_SCRIPT_GOOGLE, json=payload_limpar)
                     if response.status_code == 200:
-                        st.sidebar.success("Dados limpos com sucesso!")
-                        # Força o recarregamento para atualizar o status das bolinhas ✅/❌
+                        st.sidebar.success("Colunas B, C, D e F limpas!")
                         st.rerun() 
             except:
-                st.sidebar.error("Erro ao tentar limpar.")    
+                st.sidebar.error("Erro ao conectar com o script.")
                 
 # --- MONITORAMENTO DE STATUS DIÁRIO (VERSÃO FINAL ULTRA-ROBUSTA) ---
         st.subheader("📅 Status de Hoje")
