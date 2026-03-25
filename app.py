@@ -3,152 +3,169 @@ import pandas as pd
 import requests
 from datetime import datetime
 import urllib.parse
+import io
 
-# 1. Configuração da página: Começa fechada (collapsed)
+# 1. CONFIGURAÇÃO DA PÁGINA
+# Começa com a Sidebar fechada para um visual mais profissional
 st.set_page_config(
-    page_title="Check-in Logística | Grupo SC - Panpharma", 
-    layout="centered",
-    initial_sidebar_state="collapsed" 
+    page_title="Check-in Logística | Grupo SC", 
+    layout="centered", 
+    initial_sidebar_state="collapsed"
 )
 
-# --- CSS: Esconde o desnecessário, mantém o controle da Sidebar ---
-hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;} /* Menu de 3 pontos */
-            footer {visibility: hidden;}    /* Rodapé do Streamlit */
-            
-            /* Remove a barra colorida do topo mas mantém o botão da Sidebar */
-            header {
-                background-color: rgba(0,0,0,0);
-                height: 3rem;
-            }
-            
-            /* Ajuste para o botão da Sidebar não sumir no mobile */
-            .st-emotion-cache-zq5wmm {
-                visibility: visible !important;
-            }
-            </style>
-            """
-st.markdown(hide_st_style, unsafe_allow_html=True)
+# --- ESTILIZAÇÃO CSS (VISUAL LIMPO) ---
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;} /* Esconde menu de 3 pontos */
+    footer {visibility: hidden;}    /* Esconde rodapé Streamlit */
+    header {background-color: rgba(0,0,0,0);} /* Topo transparente */
+    
+    /* Garante que o botão da Sidebar continue visível e funcional */
+    .st-emotion-cache-zq5wmm {
+        visibility: visible !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- CONFIGURAÇÕES ---
+# --- CONFIGURAÇÕES DE CONEXÃO ---
 SHEET_ID = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
+# Certifique-se de que este link é o da "Nova Versão" implantada no Apps Script
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbz3J-m4rTKD0Wkr58B2qDsGS81RwZl7-jt3HegpTBI5Fg1mHBJLzoHTvY4D2OW5ZXuClA/exec"
-# ... restante do código ...
+ABAS_LIDERES = ["Paula Toledo", "Fabio Santos"]
+
 def get_sheet_url(aba):
     lider_limpo = urllib.parse.quote(aba)
     return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={lider_limpo}"
 
-ABAS_LIDERES = ["Carol", "Gabriel / Elisangela","Lais Alves","Leticia","Renato","Thiago"]
-
-# --- BARRA LATERAL (PAINEL DO ANALISTA) ---
-st.sidebar.header("🔐 Painel Administrativo")
-senha_admin = st.sidebar.text_input("Senha de Analista", type="password")
-
-if senha_admin == "1234":
-    st.sidebar.success("Acesso Liberado")
+# --- SIDEBAR (PAINEL DO ANALISTA) ---
+with st.sidebar:
+    st.header("🔐 Painel Administrativo")
+    senha = st.text_input("Senha de Acesso", type="password")
     
-    # ... (Botão de pendentes que já existe) ...
-
-    st.sidebar.markdown("---")
-    st.sidebar.write("📊 *Exportação Consolidada*")
-    
-    if st.sidebar.button("Gerar Excel Unificado"):
-        with st.spinner('Consolidando todas as abas...'):
-            lista_frames = []
-            
-            for l in ABAS_LIDERES:
-                try:
-                    url = get_sheet_url(l)
-                    # Lemos a aba do líder
-                    temp_df = pd.read_csv(url)
-                    # Forçamos o nome da primeira coluna e adicionamos quem é o líder
-                    temp_df.rename(columns={temp_df.columns[0]: 'Colaborador'}, inplace=True)
-                    temp_df['Líder Responsável'] = l  # Adiciona uma coluna para saber de quem é a equipe
+    if senha == "1234":
+        st.success("Acesso Liberado")
+        
+        # --- MONITORAMENTO DE STATUS DIÁRIO ---
+        st.subheader("📅 Status de Hoje")
+        data_hoje = datetime.now().strftime("%d/%m") # Procura o dia/mês na coluna D
+        
+        for l in ABAS_LIDERES:
+            try:
+                url_check = get_sheet_url(l)
+                df_check = pd.read_csv(url_check)
+                # Verifica a 4ª coluna (Data/Hora) - índice 3
+                coluna_data = df_check.iloc[:, 3].dropna()
+                if not coluna_data.empty and data_hoje in str(coluna_data.iloc[-1]):
+                    st.write(f"✅ **{l}**: Enviado")
+                else:
+                    st.write(f"❌ **{l}**: Pendente")
+            except:
+                st.write(f"⚠️ **{l}**: Erro ao ler aba")
+        
+        st.markdown("---")
+        
+        # --- EXPORTAÇÃO UNIFICADA ---
+        if st.button("📊 Gerar Excel Unificado"):
+            with st.spinner('Consolidando dados...'):
+                frames = []
+                for l in ABAS_LIDERES:
+                    try:
+                        d = pd.read_csv(get_sheet_url(l))
+                        d.rename(columns={d.columns[0]: 'Colaborador'}, inplace=True)
+                        d['Líder Responsável'] = l
+                        frames.append(d)
+                    except: pass
+                
+                if frames:
+                    full_df = pd.concat(frames, ignore_index=True)
+                    output = io.BytesIO()
+                    # Requer 'xlsxwriter' no requirements.txt
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        full_df.to_excel(writer, index=False, sheet_name='Consolidado')
                     
-                    lista_frames.append(temp_df)
-                except:
-                    st.sidebar.warning(f"Não foi possível ler a aba de {l}")
+                    st.download_button(
+                        label="📥 Baixar Excel Geral",
+                        data=output.getvalue(),
+                        file_name=f"Relatorio_Logistica_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+        
+        if st.button("🔍 Ver Pendentes de Inclusão"):
+            try:
+                df_p = pd.read_csv(get_sheet_url("Pendentes"))
+                st.write("### Colaboradores Pendentes")
+                st.dataframe(df_p)
+            except:
+                st.error("Aba 'Pendentes' não encontrada.")
 
-            if lista_frames:
-                # Unifica tudo (empilha as tabelas)
-                df_unificado = pd.concat(lista_frames, ignore_index=True)
-                
-                # Criamos o arquivo Excel na memória (BytesIO) para o Streamlit baixar
-                import io
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_unificado.to_excel(writer, index=False, sheet_name='Consolidado_Geral')
-                
-                st.sidebar.download_button(
-                    label="📥 Baixar Excel Unificado",
-                    data=buffer.getvalue(),
-                    file_name=f"Relatorio_Consolidado_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
 # --- INTERFACE PRINCIPAL ---
 st.title("📋 Lista de Presença Digital")
-st.caption("Unidade Nova Odessa | Registro Automático")
+st.caption("Unidade Sumaré | Registro Direto no Google Sheets")
 
-lider = st.selectbox("Selecione o Líder:", ["-- Selecione --"] + ABAS_LIDERES)
+lider_selecionado = st.selectbox("Selecione seu nome (Líder):", ["-- Selecione --"] + ABAS_LIDERES)
 
-if lider != "-- Selecione --":
+if lider_selecionado != "-- Selecione --":
     try:
-        # Carrega dados
-        df = pd.read_csv(get_sheet_url(lider))
-        # Garante que a primeira coluna seja tratada como nome do colaborador
-        df.rename(columns={df.columns[0]: 'Colaborador'}, inplace=True)
+        url_dados = get_sheet_url(lider_selecionado)
+        df_equipe = pd.read_csv(url_dados)
+        # Garante que a primeira coluna seja tratada como 'Colaborador'
+        df_equipe.rename(columns={df_equipe.columns[0]: 'Colaborador'}, inplace=True)
         
         with st.form("form_chamada"):
-            st.write(f"### Equipe: {lider}")
-            lista_para_enviar = []
+            st.write(f"### Equipe: {lider_selecionado}")
+            lista_final = []
             
-            for i, row in df.iterrows():
+            for i, row in df_equipe.iterrows():
                 if pd.isna(row['Colaborador']): continue
                 
-                c1, c2, c3 = st.columns([3, 1, 3])
-                c1.write(f"**{row['Colaborador']}**")
-                presenca = c2.checkbox("Presente", key=f"p_{i}")
-                obs = c3.text_input("Observação", key=f"o_{i}", placeholder="Opcional")
+                col1, col2, col3 = st.columns([3, 1, 3])
+                col1.write(f"**{row['Colaborador']}**")
+                presente = col2.checkbox("Presença", key=f"check_{i}")
+                obs = col3.text_input("Observação", key=f"obs_{i}", placeholder="-")
                 
-                lista_para_enviar.append({
+                lista_final.append({
                     "nome": row['Colaborador'],
-                    "status": "OK" if presenca else "FALTA",
+                    "status": "OK" if presente else "FALTA",
                     "obs": obs
                 })
             
             st.markdown("---")
-            if st.form_submit_button("✅ ENVIAR"):
+            if st.form_submit_button("✅ ENVIAR CHAMADA"):
                 payload = {
                     "tipo": "presenca",
-                    "lider": lider,
-                    "lista": lista_para_enviar
+                    "lider": lider_selecionado,
+                    "lista": lista_final
                 }
-                with st.spinner('Registrando presença e horário no Sheets...'):
-                    response = requests.post(URL_SCRIPT_GOOGLE, json=payload)
-                    if response.status_code == 200:
-                        st.success(f"Presença e Horário registrados na aba {lider}!")
-                    else:
-                        st.error("Erro ao salvar. Verifique a conexão com o Script.")
+                with st.spinner('Salvando dados na planilha...'):
+                    try:
+                        response = requests.post(URL_SCRIPT_GOOGLE, json=payload)
+                        if response.status_code == 200:
+                            st.success(f"Chamada de {lider_selecionado} registrada com sucesso!")
+                            st.balloons()
+                        else:
+                            st.error("Erro ao enviar. Verifique o Script do Google.")
+                    except:
+                        st.error("Falha de conexão com o servidor.")
 
-        # --- SOLICITAÇÃO DE INCLUSÃO ---
+        # --- ÁREA DE SOLICITAÇÃO ---
         st.markdown("---")
-        with st.expander("➕ SOLICITAR INCLUSÃO DE NOVO COLABORADOR"):
-            with st.form("form_inclusao"):
-                nome_n = st.text_input("Nome Completo")
-                area_n = st.text_input("Área/Setor")
-                if st.form_submit_button("Enviar Solicitação"):
-                    if nome_n and area_n:
-                        payload_inc = {
-                            "tipo": "inclusao", 
-                            "colaborador": nome_n, 
-                            "lider": lider, 
-                            "area": area_n
+        with st.expander("➕ Solicitar inclusão de novo colaborador"):
+            with st.form("form_inc"):
+                nome_novo = st.text_input("Nome Completo")
+                area_nova = st.text_input("Setor/Área")
+                if st.form_submit_button("Enviar para o Analista"):
+                    if nome_novo and area_nova:
+                        inc_payload = {
+                            "tipo": "inclusao",
+                            "colaborador": nome_novo,
+                            "lider": lider_selecionado,
+                            "area": area_nova
                         }
-                        requests.post(URL_SCRIPT_GOOGLE, json=payload_inc)
+                        requests.post(URL_SCRIPT_GOOGLE, json=inc_payload)
                         st.success("Solicitação enviada para a aba Pendentes!")
                     else:
-                        st.warning("Preencha todos os campos.")
+                        st.warning("Preencha Nome e Área.")
 
     except Exception as e:
-        st.error("Erro ao carregar a lista. Verifique as abas da planilha.")
+        st.error(f"Erro ao carregar a aba '{lider_selecionado}'.")
+        st.info("Verifique se o nome da aba no Sheets está idêntico e se a planilha está compartilhada.")
