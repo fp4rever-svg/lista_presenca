@@ -31,7 +31,7 @@ st.markdown("""
 SHEET_ID = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
 # Certifique-se de que este link é o da "Nova Versão" implantada no Apps Script
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbz3J-m4rTKD0Wkr58B2qDsGS81RwZl7-jt3HegpTBI5Fg1mHBJLzoHTvY4D2OW5ZXuClA/exec"
-ABAS_LIDERES = ["Paula Toledo", "Fabio Santos"]
+ABAS_LIDERES = ["Carol", "Gabriel / Elisangela","Lais Alves","Leticia","Renato","Thiago"]
 
 def get_sheet_url(aba):
     lider_limpo = urllib.parse.quote(aba)
