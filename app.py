@@ -45,34 +45,39 @@ with st.sidebar:
     if senha == "1234":
         st.success("Acesso Liberado")
         
-# --- MONITORAMENTO DE STATUS DIÁRIO (VERSÃO BLINDADA) ---
+# --- MONITORAMENTO DE STATUS DIÁRIO (VERSÃO FINAL ULTRA-ROBUSTA) ---
         st.subheader("📅 Status de Hoje")
         
-        # Pegamos o dia e o mês atual (ex: 24/03)
-        hoje_curto = datetime.now().strftime("%d/%m")
+        # Pegamos o dia e o mês de hoje separadamente
+        dia_hoje = datetime.now().strftime("%d")
+        mes_hoje = datetime.now().strftime("%m")
         
         for l in ABAS_LIDERES:
             try:
                 url_check = get_sheet_url(l)
-                # Forçamos o pandas a ler tudo como texto (string) para evitar erros de data
-                df_check = pd.read_csv(url_check, dtype=str)
+                # Lemos a planilha ignorando erros de formatação
+                df_check = pd.read_csv(url_check, dtype=str).fillna("")
                 
-                # Verificamos a 4ª coluna (índice 3 - Coluna D)
+                enviado_hoje = False
+                
+                # Se a planilha não estiver vazia e tiver a coluna D (índice 3)
                 if not df_check.empty and df_check.shape[1] >= 4:
-                    coluna_d = df_check.iloc[:, 3].fillna("").astype(str)
+                    # Pegamos apenas os valores da Coluna D
+                    datas_coluna = df_check.iloc[:, 3].values
                     
-                    # Verificamos se "hoje" aparece em qualquer linha da coluna D
-                    enviado_hoje = any(hoje_curto in data_celula for data_celula in coluna_d)
-                    
-                    if enviado_hoje:
-                        st.write(f"✅ **{l}**: Enviado")
-                    else:
-                        st.write(f"❌ **{l}**: Pendente")
+                    for data_celula in datas_coluna:
+                        # Se o DIA e o MÊS de hoje estiverem dentro da célula (em qualquer ordem)
+                        if dia_hoje in data_celula and mes_hoje in data_celula:
+                            enviado_hoje = True
+                            break
+                
+                if enviado_hoje:
+                    st.write(f"✅ **{l}**: Enviado")
                 else:
-                    st.write(f"❌ **{l}**: Sem dados")
+                    st.write(f"❌ **{l}**: Pendente")
+                    
             except Exception as e:
                 st.write(f"⚠️ **{l}**: Erro na leitura")
-
         
         # --- EXPORTAÇÃO UNIFICADA ---
         if st.button("📊 Gerar Excel Unificado"):
