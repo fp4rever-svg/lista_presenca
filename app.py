@@ -129,29 +129,52 @@ else:
                 s_dict = buscar_senhas_db()
                 if s_dict: st.table(pd.DataFrame(list(s_dict.items()), columns=['Líder', 'Senha']))
 
-        with t3:
+           with t3:
             st.write("### 📈 Produtividade (Google Sheets)")
             cf1, cf2 = st.columns(2)
-            dep = cf1.selectbox("Depósito:", ["Todos", 102, 105, 107, 111, 302])
+            dep = cf1.selectbox("Filtrar Depósito:", ["Todos", 102, 105, 107, 111, 302])
             op = cf2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
 
-            aba_alvo = "Dinamica Conf" if op == "Conferência" else "Dinamica Picking"
+            # Define o nome da aba conforme sua descrição (Case Sensitive)
+            # Se no Sheets estiver "Dinamica Pick", mude aqui para "Dinamica Pick"
+            aba_alvo = "Dinamica Conf" if op == "Conferência" else "Dinamica Pick"
+            
             try:
-                df_p = pd.read_csv(get_csv_url(ID_SHEETS_PROD, aba_alvo))
-                u_col = df_p.columns[0]
-                ignorar = [u_col, 'Depósito', 'Total Geral', 'Total']
-                h_cols = [c for c in df_p.columns if c not in ignorar]
+                # Gerar URL de exportação direta
+                url_export = f"https://docs.google.com/spreadsheets/d/{ID_SHEETS_PROD}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(aba_alvo)}"
                 
-                if dep != "Todos" and 'Depósito' in df_p.columns:
-                    df_p = df_p[df_p['Depósito'] == dep]
+                # Tentativa de leitura com tratamento de cabeçalho
+                df_p = pd.read_csv(url_export).dropna(how='all', axis=1).dropna(how='all', axis=0)
 
-                if h_cols:
-                    df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
-                    g1, g2 = st.columns(2)
-                    with g1:
-                        st.write("**Ranking Individual**")
-                        st.bar_chart(df_m.groupby(u_col)['Qtd'].sum())
-                    with g2:
-                        st.write("**Fluxo por Hora**")
-                        st.line_chart(df_m.groupby('Hora')['Qtd'].sum())
-            except: st.warning("Aba de produtividade não encontrada.")
+                if not df_p.empty:
+                    u_col = df_p.columns[0]
+                    # Lista de colunas para ignorar (ajustado para o padrão de Tabelas Dinâmicas)
+                    ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total', 'Grand Total']
+                    h_cols = [c for c in df_p.columns if c not in ignorar and not c.startswith('Unnamed')]
+                    
+                    # Aplica filtro de depósito
+                    if dep != "Todos" and 'Depósito' in df_p.columns:
+                        df_p = df_p[df_p['Depósito'] == dep]
+
+                    if h_cols:
+                        df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd')
+                        df_m['Qtd'] = pd.to_numeric(df_m['Qtd'], errors='coerce').fillna(0)
+
+                        g1, g2 = st.columns(2)
+                        with g1:
+                            st.write(f"**Ranking: {op}**")
+                            resumo_ind = df_m.groupby(u_col)['Qtd'].sum().sort_values(ascending=False)
+                            st.bar_chart(resumo_ind)
+                        
+                        with g2:
+                            st.write("**Fluxo por Hora**")
+                            resumo_hora = df_m.groupby('Hora')['Qtd'].sum()
+                            st.line_chart(resumo_hora)
+                    else:
+                        st.info(f"Dados encontrados na aba '{aba_alvo}', mas sem colunas de horários identificadas.")
+                else:
+                    st.warning(f"A aba '{aba_alvo}' parece estar vazia.")
+
+            except Exception as e:
+                st.error(f"Erro de conexão com a aba '{aba_alvo}'.")
+                st.info("💡 Verifique se o ID da planilha está correto e se ela está 'Aberta para qualquer pessoa com o link'.")
