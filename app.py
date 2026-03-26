@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import requests
 import urllib.parse
+from io import BytesIO
 
 # 1. CONFIGURAÇÕES
 st.set_page_config(page_title="Check-in & Performance | Nova Odessa", layout="wide")
 
 # --- IDs DOS ARQUIVOS ---
 ID_PLANILHA_PRESENCA = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
-# Certifique-se de que este ID abaixo é o da sua planilha do Google Sheets (não do Excel)
 ID_SHEETS_PROD = "1TR5oI_I4C9IA-QfUp0zaMmS4Dni1J8nG75Flxd1yguA" 
 
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbz3J-m4rTKD0Wkr58B2qDsGS81RwZl7-jt3HegpTBI5Fg1mHBJLzoHTvY4D2OW5ZXuClA/exec"
@@ -24,8 +24,7 @@ def buscar_senhas_db():
     try:
         r = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "buscar_senhas"}, timeout=5)
         return r.json() if r.status_code == 200 else {}
-    except:
-        return {}
+    except: return {}
 
 # --- LÓGICA DE SESSÃO ---
 if 'logado' not in st.session_state:
@@ -55,8 +54,7 @@ if not st.session_state.logado:
                     if str(s_input) == str(s_db):
                         st.session_state.update({'logado': True, 'usuario': u_sel, 'perfil': "Lider"})
                         st.rerun()
-                    else:
-                        st.error("Incorreta.")
+                    else: st.error("Incorreta.")
     else:
         s_adm = st.text_input("Senha Admin:", type="password")
         if st.button("Acessar"):
@@ -69,58 +67,79 @@ if not st.session_state.logado:
 # ==========================================
 else:
     c_h1, c_h2 = st.columns([5, 1])
-    c_h1.subheader(f"Usuário: {st.session_state.usuario}")
+    c_h1.subheader(f"Bem-vindo, {st.session_state.usuario}")
     if c_h2.button("Sair"):
         st.session_state.logado = False
         st.rerun()
 
+    # --- VISÃO DO LÍDER ---
     if st.session_state.perfil == "Lider":
         try:
             df = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, st.session_state.usuario))
             with st.form("f_pres"):
+                st.write("### Check-in da Equipe")
                 envios = []
                 for i, r in df.iterrows():
                     col1, col2, col3 = st.columns([3, 1, 3])
                     col1.write(r.iloc[0])
-                    ok = col2.checkbox("OK", key=f"c{i}")
+                    ok = col2.checkbox("Presença", key=f"c{i}")
                     obs = col3.text_input("Obs", key=f"o{i}")
                     envios.append({"nome": r.iloc[0], "status": "OK" if ok else "FALTA", "obs": obs})
-                if st.form_submit_button("Enviar"):
+                if st.form_submit_button("✅ Finalizar Envio"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca", "lider": st.session_state.usuario, "lista": envios})
-                    st.success("Enviado!")
-        except:
-            st.error("Erro na lista.")
+                    st.success("Dados enviados com sucesso!")
+        except: st.error("Erro ao carregar lista de colaboradores.")
 
+    # --- VISÃO DO ADMINISTRADOR ---
     elif st.session_state.perfil == "Admin":
-        t1, t2, t3 = st.tabs(["Check-in Diário", "Gestão de Senhas", "Performance"])
+        t1, t2, t3 = st.tabs(["Monitoramento Diário", "Gestão e Comandos", "Performance"])
 
         with t1:
-            st.write("Acompanhamento de Equipes")
-            for lider in LIDERES:
-                st.write(f"- {lider}")
+            st.write("### Status de Envio por Líder")
+            try:
+                # Busca status de quem já preencheu na aba 'Controle'
+                df_c = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, "Controle"))
+                for _, row in df_c.iterrows():
+                    cor = "✅" if row['Status'] == "Preenchido" else "❌"
+                    st.write(f"{cor} **{row['Lider']}**: {row['Status']} às {row['Horario']}")
+            except: st.info("Aguardando primeiros envios do dia.")
 
         with t2:
-            if st.button("Visualizar Senhas"):
-                senhas_atras = buscar_senhas_db()
-                if senhas_atras:
-                    st.table(pd.DataFrame(list(senhas_atras.items()), columns=['Líder', 'Senha']))
-                else:
-                    st.info("Aguardando cadastros.")
+            st.write("### Comandos do Sistema")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("🗑️ Resetar Presenças (Limpar B,C,D,F)"):
+                    r = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "reset_presenca"})
+                    st.warning("Comando de reset enviado!")
+
+            with c2:
+                if st.button("📂 Gerar Relatório de Presença"):
+                    # Aqui buscamos a aba consolidada 'Base_Geral' para exportar
+                    try:
+                        df_rel = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, "Base_Geral"))
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                            df_rel.to_excel(writer, index=False, sheet_name='Relatorio')
+                        st.download_button(label="⬇️ Baixar Excel", data=output.getvalue(), file_name=f"Presenca_{datetime.now().strftime('%d-%m')}.xlsx")
+                    except: st.error("Erro ao gerar arquivo.")
+
+            st.divider()
+            if st.button("🔑 Visualizar Senhas dos Líderes"):
+                s_dict = buscar_senhas_db()
+                if s_dict: st.table(pd.DataFrame(list(s_dict.items()), columns=['Líder', 'Senha']))
 
         with t3:
             st.write("### 📈 Produtividade (Google Sheets)")
-            col_f1, col_f2 = st.columns(2)
-            dep = col_f1.selectbox("Depósito:", ["Todos", 102, 105, 107, 111, 302])
-            op = col_f2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
+            cf1, cf2 = st.columns(2)
+            dep = cf1.selectbox("Depósito:", ["Todos", 102, 105, 107, 111, 302])
+            op = cf2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
 
-            aba = "Dinamica Conf" if op == "Conferência" else "Dinamica Picking"
-            
+            aba_alvo = "Dinamica Conf" if op == "Conferência" else "Dinamica Picking"
             try:
-                # Leitura simplificada via CSV
-                df_p = pd.read_csv(get_csv_url(ID_SHEETS_PROD, aba))
-                
+                df_p = pd.read_csv(get_csv_url(ID_SHEETS_PROD, aba_alvo))
                 u_col = df_p.columns[0]
-                ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total']
+                ignorar = [u_col, 'Depósito', 'Total Geral', 'Total']
                 h_cols = [c for c in df_p.columns if c not in ignorar]
                 
                 if dep != "Todos" and 'Depósito' in df_p.columns:
@@ -131,13 +150,8 @@ else:
                     g1, g2 = st.columns(2)
                     with g1:
                         st.write("**Ranking Individual**")
-                        # Agrupamento simples para evitar erro de versão do Altair
                         st.bar_chart(df_m.groupby(u_col)['Qtd'].sum())
                     with g2:
                         st.write("**Fluxo por Hora**")
                         st.line_chart(df_m.groupby('Hora')['Qtd'].sum())
-                else:
-                    st.info("Sem dados de horários encontrados.")
-            except Exception as erro_sheets:
-                st.warning(f"Erro ao ler a aba '{aba}'. Verifique se o nome está correto e se a planilha está compartilhada.")
-                # st.write(erro_sheets) # Descomente para depurar se necessário
+            except: st.warning("Aba de produtividade não encontrada.")
