@@ -106,34 +106,49 @@ else:
             if st.button("Ver Senhas"):
                 st.table(pd.DataFrame(list(buscar_senhas_db().items()), columns=['Líder', 'Senha']))
 
-        with t3:
-            st.write("📊 Produtividade em Tempo Real")
+      with t3:
+            st.write("### 📊 Produtividade em Tempo Real")
+            
+            # Filtros
             c_f1, c_f2 = st.columns(2)
             dep = c_f1.selectbox("Depósito:", ["Todos", 102, 105, 107, 111, 302])
+            
+            # TROCAMOS segmented_control POR radio PARA EVITAR ERRO DE VERSÃO
             op = c_f2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
 
             aba = "Dinamica Conf" if op == "Conferência" else "Dinamica Picking"
+            
             try:
-                # Link para exportar o .xlsm como Excel comum para o pandas
+                # Link de exportação
                 url_prod = f"https://docs.google.com/spreadsheets/d/{ID_EXCEL_PRODUTIVIDADE}/export?format=xlsx"
+                
+                # Lendo os dados
                 df_p = pd.read_excel(url_prod, sheet_name=aba)
 
-                # Tratamento de Colunas Dinâmicas (Melt)
+                # Tratamento de Colunas (Identificando Usuários e Horas)
                 u_col = df_p.columns[0]
-                ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total']
+                # Lista de colunas para ignorar no gráfico de horas
+                ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total', 'Soma de Total Geral']
                 h_cols = [c for c in df_p.columns if c not in ignorar]
                 
+                # "Derretendo" a tabela para o gráfico
                 df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
 
-                # Gráficos
+                # Exibição dos Gráficos
                 g1, g2 = st.columns(2)
                 with g1:
-                    st.write("**Ranking por Usuário**")
+                    st.write(f"**Ranking Individual ({op})**")
                     rank = df_m.groupby(u_col)['Qtd'].sum().sort_values(ascending=False).reset_index()
                     st.bar_chart(rank, x=u_col, y='Qtd')
+                
                 with g2:
                     st.write("**Evolução por Hora**")
                     evol = df_m.groupby('Hora')['Qtd'].sum().reset_index()
                     st.line_chart(evol, x='Hora', y='Qtd')
+
+                with st.expander("Ver Tabela de Dados Brutos"):
+                    st.dataframe(df_p)
+
             except Exception as e:
-                st.info(f"Aguardando dados da aba {aba}...")
+                st.warning(f"Não foi possível carregar os dados da aba '{aba}'.")
+                st.info("Verifique se o arquivo está compartilhado no Drive como 'Qualquer pessoa com o link'.")
