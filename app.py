@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 import urllib.parse
+import plotly.express as px
+import plotly.graph_objects as go
 from io import BytesIO
 from datetime import datetime
 
@@ -91,16 +93,13 @@ else:
             st.write("### Status de Envio por Líder")
             try:
                 df_c = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, "Controle"))
-                # Mescla com a lista fixa de líderes para garantir que todos apareçam
-                status_lideres = pd.DataFrame({"Lider": LIDERES})
-                df_c = pd.merge(status_lideres, df_c, on="Lider", how="left").fillna({"Status": "Pendente", "Horario": "-"})
-                
-                for _, row in df_c.iterrows():
-                    icone = "✅" if row['Status'] == "Preenchido" else "⏳"
-                    status_txt = "Entregue" if row['Status'] == "Preenchido" else "Pendente"
-                    st.write(f"{icone} **{row['Lider']}**: {status_txt} | {row['Horario']}")
-            except: 
-                for l in LIDERES: st.write(f"⏳ **{l}**: Pendente | -")
+                for lider_nome in LIDERES:
+                    info = df_c[df_c['Lider'] == lider_nome]
+                    if not info.empty and info.iloc[0]['Status'] == "Preenchido":
+                        st.write(f"✅ **{lider_nome}**: Entregue | {info.iloc[0]['Horario']}")
+                    else:
+                        st.write(f"⏳ **{lider_nome}**: Pendente | -")
+            except: st.info("Erro ao carregar monitoramento.")
 
         with t2:
             st.write("### Comandos do Sistema")
@@ -120,48 +119,50 @@ else:
                     except: st.error("Erro ao gerar arquivo.")
 
         with t3:
-            st.write("### 📈 Produtividade (Metas)")
+            st.write("### 📈 Produtividade com Metas")
             cf1, cf2 = st.columns(2)
-            dep_escolhido = cf1.selectbox("Filtrar Depósito:", ["Todos", 102, 105, 107, 111, 302])
+            dep_escolhido = cf1.selectbox("Filtrar Depósito:", ["Todos", "102", "105", "107", "111", "302"])
             op = cf2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
 
             aba = "Conf" if op == "Conferência" else "Pick"
-            meta = 2000 if op == "Conferência" else 150
+            meta_valor = 2000 if op == "Conferência" else 150
             
             try:
-                url = f"https://docs.google.com/spreadsheets/d/{ID_SHEETS_PROD}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(aba)}"
+                url = get_csv_url(ID_SHEETS_PROD, aba)
                 df_p = pd.read_csv(url)
 
                 if not df_p.empty:
-                    # Forçar colunas numéricas
+                    # Normalização da coluna Depósito para evitar erro de filtro
                     if 'Depósito' in df_p.columns:
-                        df_p['Depósito'] = pd.to_numeric(df_p['Depósito'], errors='coerce')
+                        df_p['Depósito'] = df_p['Depósito'].astype(str).str.replace('.0', '', regex=False).str.strip()
                     
+                    if dep_escolhido != "Todos":
+                        df_p = df_p[df_p['Depósito'] == dep_escolhido]
+
                     u_col = df_p.columns[0]
                     ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total']
                     h_cols = [c for c in df_p.columns if c not in ignorar and not str(c).startswith('Unnamed')]
-                    
-                    # Filtro de Depósito corrigido
-                    if dep_escolhido != "Todos":
-                        df_p = df_p[df_p['Depósito'] == int(dep_escolhido)]
 
                     if h_cols:
                         df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd')
                         df_m['Qtd'] = pd.to_numeric(df_m['Qtd'], errors='coerce').fillna(0)
 
-                        g1, g2 = st.columns(2)
-                        with g1:
-                            st.write(f"**Ranking Individual (Meta: {meta})**")
-                            rank = df_m.groupby(u_col)['Qtd'].sum().sort_values(ascending=False)
-                            st.bar_chart(rank)
-                            # Exibe tabela com valores para conferência rápida
-                            st.dataframe(rank, use_container_width=True)
-                        
-                        with g2:
-                            st.write(f"**Fluxo por Hora (Meta Horária: {meta})**")
-                            fluxo = df_m.groupby('Hora')['Qtd'].sum()
-                            st.line_chart(fluxo)
-                            # Adiciona linha de meta visualmente
-                            st.info(f"Produção Total: {int(fluxo.sum())} unidades")
-                    else: st.info("Sem colunas de horários.")
-            except: st.error(f"Erro ao ler aba '{aba}'.")
+                        # GRÁFICO 1: RANKING INDIVIDUAL (PLOTLY)
+                        fig_rank = px.bar(
+                            df_m.groupby(u_col)['Qtd'].sum().reset_index(),
+                            x=u_col, y='Qtd', text_auto='.0f',
+                            title=f"Ranking {op} (Meta: {meta_valor})"
+                        )
+                        fig_rank.update_traces(textposition="outside")
+                        st.plotly_chart(fig_rank, use_container_width=True)
+
+                        # GRÁFICO 2: FLUXO POR HORA COM LINHA DE META
+                        fluxo = df_m.groupby('Hora')['Qtd'].sum().reset_index()
+                        fig_fluxo = px.line(fluxo, x='Hora', y='Qtd', title=f"Fluxo por Hora - Meta {meta_valor}/h", markers=True)
+                        fig_fluxo.add_hline(y=meta_valor, line_dash="dash", line_color="red", annotation_text=f"Meta: {meta_valor}")
+                        st.plotly_chart(fig_fluxo, use_container_width=True)
+
+                    else: st.info("Sem dados de horários.")
+                else: st.warning(f"A aba '{aba}' está vazia.")
+            except Exception as e:
+                st.error(f"Erro ao processar dados da aba {aba}. Verifique a estrutura da planilha.")
