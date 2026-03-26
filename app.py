@@ -31,9 +31,6 @@ def buscar_senhas_db():
 if 'logado' not in st.session_state:
     st.session_state.update({'logado': False, 'usuario': None, 'perfil': None})
 
-# ==========================================
-# LOGIN
-# ==========================================
 if not st.session_state.logado:
     st.title("🔒 Acesso - Grupo SC (Nova Odessa)")
     p_tipo = st.radio("Entrar como:", ["Líder", "Administrador"], horizontal=True)
@@ -63,9 +60,6 @@ if not st.session_state.logado:
                 st.session_state.update({'logado': True, 'usuario': "Admin", 'perfil': "Admin"})
                 st.rerun()
 
-# ==========================================
-# ÁREA LOGADA
-# ==========================================
 else:
     c_h1, c_h2 = st.columns([5, 1])
     c_h1.subheader(f"Bem-vindo, {st.session_state.usuario}")
@@ -87,8 +81,8 @@ else:
                     envios.append({"nome": r.iloc[0], "status": "OK" if ok else "FALTA", "obs": obs})
                 if st.form_submit_button("✅ Finalizar Envio"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca", "lider": st.session_state.usuario, "lista": envios})
-                    st.success("Dados enviados com sucesso!")
-        except: st.error("Erro ao carregar lista de colaboradores.")
+                    st.success("Dados enviados!")
+        except: st.error("Erro na lista.")
 
     elif st.session_state.perfil == "Admin":
         t1, t2, t3 = st.tabs(["Monitoramento Diário", "Gestão e Comandos", "Performance"])
@@ -97,62 +91,77 @@ else:
             st.write("### Status de Envio por Líder")
             try:
                 df_c = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, "Controle"))
+                # Mescla com a lista fixa de líderes para garantir que todos apareçam
+                status_lideres = pd.DataFrame({"Lider": LIDERES})
+                df_c = pd.merge(status_lideres, df_c, on="Lider", how="left").fillna({"Status": "Pendente", "Horario": "-"})
+                
                 for _, row in df_c.iterrows():
-                    cor = "✅" if row['Status'] == "Preenchido" else "❌"
-                    st.write(f"{cor} **{row['Lider']}**: {row['Status']} às {row['Horario']}")
-            except: st.info("Aguardando primeiros envios do dia.")
+                    icone = "✅" if row['Status'] == "Preenchido" else "⏳"
+                    status_txt = "Entregue" if row['Status'] == "Preenchido" else "Pendente"
+                    st.write(f"{icone} **{row['Lider']}**: {status_txt} | {row['Horario']}")
+            except: 
+                for l in LIDERES: st.write(f"⏳ **{l}**: Pendente | -")
 
         with t2:
             st.write("### Comandos do Sistema")
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("🗑️ Resetar Presenças (Limpar B,C,D,F)"):
+                if st.button("🗑️ Resetar Presenças"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "reset_presenca"})
                     st.warning("Comando de reset enviado!")
             with c2:
-                if st.button("📂 Gerar Relatório de Presença"):
+                if st.button("📂 Gerar Relatório"):
                     try:
                         df_rel = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, "Base_Geral"))
                         output = BytesIO()
                         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                            df_rel.to_excel(writer, index=False, sheet_name='Relatorio')
-                        st.download_button(label="⬇️ Baixar Excel", data=output.getvalue(), file_name=f"Presenca_{datetime.now().strftime('%d-%m')}.xlsx")
+                            df_rel.to_excel(writer, index=False)
+                        st.download_button(label="⬇️ Baixar Excel", data=output.getvalue(), file_name="Relatorio.xlsx")
                     except: st.error("Erro ao gerar arquivo.")
-            st.divider()
-            if st.button("🔑 Visualizar Senhas"):
-                s_dict = buscar_senhas_db()
-                if s_dict: st.table(pd.DataFrame(list(s_dict.items()), columns=['Líder', 'Senha']))
 
         with t3:
-            st.write("### 📈 Produtividade (Google Sheets)")
+            st.write("### 📈 Produtividade (Metas)")
             cf1, cf2 = st.columns(2)
-            dep = cf1.selectbox("Depósito:", ["Todos", 102, 105, 107, 111, 302])
+            dep_escolhido = cf1.selectbox("Filtrar Depósito:", ["Todos", 102, 105, 107, 111, 302])
             op = cf2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
 
-            aba_alvo = "Conf" if op == "Conferência" else "Pick"
+            aba = "Conf" if op == "Conferência" else "Pick"
+            meta = 2000 if op == "Conferência" else 150
             
             try:
-                url_export = f"https://docs.google.com/spreadsheets/d/{ID_SHEETS_PROD}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(aba_alvo)}"
-                df_p = pd.read_csv(url_export)
+                url = f"https://docs.google.com/spreadsheets/d/{ID_SHEETS_PROD}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(aba)}"
+                df_p = pd.read_csv(url)
 
                 if not df_p.empty:
+                    # Forçar colunas numéricas
+                    if 'Depósito' in df_p.columns:
+                        df_p['Depósito'] = pd.to_numeric(df_p['Depósito'], errors='coerce')
+                    
                     u_col = df_p.columns[0]
                     ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total']
-                    h_cols = [c for c in df_p.columns if c not in ignorar and not c.startswith('Unnamed')]
+                    h_cols = [c for c in df_p.columns if c not in ignorar and not str(c).startswith('Unnamed')]
                     
-                    if dep != "Todos" and 'Depósito' in df_p.columns:
-                        df_p = df_p[df_p['Depósito'] == dep]
+                    # Filtro de Depósito corrigido
+                    if dep_escolhido != "Todos":
+                        df_p = df_p[df_p['Depósito'] == int(dep_escolhido)]
 
                     if h_cols:
-                        df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
+                        df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd')
                         df_m['Qtd'] = pd.to_numeric(df_m['Qtd'], errors='coerce').fillna(0)
+
                         g1, g2 = st.columns(2)
                         with g1:
-                            st.write(f"**Ranking: {op}**")
-                            st.bar_chart(df_m.groupby(u_col)['Qtd'].sum())
+                            st.write(f"**Ranking Individual (Meta: {meta})**")
+                            rank = df_m.groupby(u_col)['Qtd'].sum().sort_values(ascending=False)
+                            st.bar_chart(rank)
+                            # Exibe tabela com valores para conferência rápida
+                            st.dataframe(rank, use_container_width=True)
+                        
                         with g2:
-                            st.write("**Fluxo por Hora**")
-                            st.line_chart(df_m.groupby('Hora')['Qtd'].sum())
-                    else: st.info("Dados carregados, mas colunas de horários não identificadas.")
-                else: st.warning(f"A aba '{aba_alvo}' está vazia.")
-            except: st.error(f"Erro ao conectar na aba '{aba_alvo}'. Verifique o compartilhamento.")
+                            st.write(f"**Fluxo por Hora (Meta Horária: {meta})**")
+                            fluxo = df_m.groupby('Hora')['Qtd'].sum()
+                            st.line_chart(fluxo)
+                            # Adiciona linha de meta visualmente
+                            st.info(f"Produção Total: {int(fluxo.sum())} unidades")
+                    else: st.info("Sem colunas de horários.")
+            except: st.error(f"Erro ao ler aba '{aba}'.")
