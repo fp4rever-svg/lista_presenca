@@ -10,7 +10,7 @@ st.set_page_config(page_title="Check-in & Performance | Grupo SC", layout="wide"
 
 # --- IDs DOS ARQUIVOS (Substitua pelos seus IDs do Google Drive) ---
 ID_PLANILHA_PRESENCA = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
-ID_EXCEL_PRODUTIVIDADE = "COLOQUE_AQUI_O_ID_DO_SEU_REPORT_CONF_PICK" # <--- ATENÇÃO AQUI
+ID_EXCEL_PRODUTIVIDADE = "1mKZxkhEjrJN5hidKG4pXNcMDhbgc5Z5C" # <--- ATENÇÃO AQUI
 
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbz3J-m4rTKD0Wkr58B2qDsGS81RwZl7-jt3HegpTBI5Fg1mHBJLzoHTvY4D2OW5ZXuClA/exec"
 LIDERES = ["Carol", "Elisangela", "Lais Alves", "Leticia", "Renato", "Thiago"]
