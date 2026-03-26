@@ -118,15 +118,17 @@ else:
                     df_p = df_p[df_p['Depósito'] == dep]
 
                 if h_cols:
-                    df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
+                    # Preparando os dados
+                    df_melt = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
+
                     g1, g2 = st.columns(2)
                     with g1:
-                        st.write("**Ranking Individual**")
-                        st.bar_chart(df_m.groupby(u_col)['Qtd'].sum())
+                        st.write(f"**Ranking Individual**")
+                        # Usando st.bar_chart DIRETAMENTE no dataframe agrupado
+                        rank = df_melt.groupby(u_col)['Qtd'].sum().sort_values(ascending=False)
+                        st.bar_chart(rank)
+                    
                     with g2:
-                        st.write("**Fluxo por Hora**")
-                        st.line_chart(df_m.groupby('Hora')['Qtd'].sum())
-                else:
-                    st.info("Sem dados de horários.")
-            except:
-                st.warning(f"Certifique-se que a aba '{aba}' existe no Sheets.")
+                        st.write("**Evolução por Hora**")
+                        evol = df_melt.groupby('Hora')['Qtd'].sum()
+                        st.line_chart(evol)
