@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import urllib.parse
 from io import BytesIO
+from datetime import datetime
 
 # 1. CONFIGURAÇÕES
 st.set_page_config(page_title="Check-in & Performance | Nova Odessa", layout="wide")
@@ -72,7 +73,6 @@ else:
         st.session_state.logado = False
         st.rerun()
 
-    # --- VISÃO DO LÍDER ---
     if st.session_state.perfil == "Lider":
         try:
             df = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, st.session_state.usuario))
@@ -90,14 +90,12 @@ else:
                     st.success("Dados enviados com sucesso!")
         except: st.error("Erro ao carregar lista de colaboradores.")
 
-    # --- VISÃO DO ADMINISTRADOR ---
     elif st.session_state.perfil == "Admin":
         t1, t2, t3 = st.tabs(["Monitoramento Diário", "Gestão e Comandos", "Performance"])
 
         with t1:
             st.write("### Status de Envio por Líder")
             try:
-                # Busca status de quem já preencheu na aba 'Controle'
                 df_c = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, "Controle"))
                 for _, row in df_c.iterrows():
                     cor = "✅" if row['Status'] == "Preenchido" else "❌"
@@ -106,16 +104,13 @@ else:
 
         with t2:
             st.write("### Comandos do Sistema")
-            
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("🗑️ Resetar Presenças (Limpar B,C,D,F)"):
-                    r = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "reset_presenca"})
+                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "reset_presenca"})
                     st.warning("Comando de reset enviado!")
-
             with c2:
                 if st.button("📂 Gerar Relatório de Presença"):
-                    # Aqui buscamos a aba consolidada 'Base_Geral' para exportar
                     try:
                         df_rel = pd.read_csv(get_csv_url(ID_PLANILHA_PRESENCA, "Base_Geral"))
                         output = BytesIO()
@@ -123,58 +118,41 @@ else:
                             df_rel.to_excel(writer, index=False, sheet_name='Relatorio')
                         st.download_button(label="⬇️ Baixar Excel", data=output.getvalue(), file_name=f"Presenca_{datetime.now().strftime('%d-%m')}.xlsx")
                     except: st.error("Erro ao gerar arquivo.")
-
             st.divider()
-            if st.button("🔑 Visualizar Senhas dos Líderes"):
+            if st.button("🔑 Visualizar Senhas"):
                 s_dict = buscar_senhas_db()
                 if s_dict: st.table(pd.DataFrame(list(s_dict.items()), columns=['Líder', 'Senha']))
 
-           with t3:
+        with t3:
             st.write("### 📈 Produtividade (Google Sheets)")
             cf1, cf2 = st.columns(2)
-            dep = cf1.selectbox("Filtrar Depósito:", ["Todos", 102, 105, 107, 111, 302])
+            dep = cf1.selectbox("Depósito:", ["Todos", 102, 105, 107, 111, 302])
             op = cf2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
 
-            # Define o nome da aba conforme sua descrição (Case Sensitive)
-            # Se no Sheets estiver "Dinamica Pick", mude aqui para "Dinamica Pick"
             aba_alvo = "Conf" if op == "Conferência" else "Pick"
             
             try:
-                # Gerar URL de exportação direta
                 url_export = f"https://docs.google.com/spreadsheets/d/{ID_SHEETS_PROD}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(aba_alvo)}"
-                
-                # Tentativa de leitura com tratamento de cabeçalho
-                df_p = pd.read_csv(url_export).dropna(how='all', axis=1).dropna(how='all', axis=0)
+                df_p = pd.read_csv(url_export)
 
                 if not df_p.empty:
                     u_col = df_p.columns[0]
-                    # Lista de colunas para ignorar (ajustado para o padrão de Tabelas Dinâmicas)
-                    ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total', 'Grand Total']
+                    ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total']
                     h_cols = [c for c in df_p.columns if c not in ignorar and not c.startswith('Unnamed')]
                     
-                    # Aplica filtro de depósito
                     if dep != "Todos" and 'Depósito' in df_p.columns:
                         df_p = df_p[df_p['Depósito'] == dep]
 
                     if h_cols:
-                        df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd')
+                        df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
                         df_m['Qtd'] = pd.to_numeric(df_m['Qtd'], errors='coerce').fillna(0)
-
                         g1, g2 = st.columns(2)
                         with g1:
                             st.write(f"**Ranking: {op}**")
-                            resumo_ind = df_m.groupby(u_col)['Qtd'].sum().sort_values(ascending=False)
-                            st.bar_chart(resumo_ind)
-                        
+                            st.bar_chart(df_m.groupby(u_col)['Qtd'].sum())
                         with g2:
                             st.write("**Fluxo por Hora**")
-                            resumo_hora = df_m.groupby('Hora')['Qtd'].sum()
-                            st.line_chart(resumo_hora)
-                    else:
-                        st.info(f"Dados encontrados na aba '{aba_alvo}', mas sem colunas de horários identificadas.")
-                else:
-                    st.warning(f"A aba '{aba_alvo}' parece estar vazia.")
-
-            except Exception as e:
-                st.error(f"Erro de conexão com a aba '{aba_alvo}'.")
-                st.info("💡 Verifique se o ID da planilha está correto e se ela está 'Aberta para qualquer pessoa com o link'.")
+                            st.line_chart(df_m.groupby('Hora')['Qtd'].sum())
+                    else: st.info("Dados carregados, mas colunas de horários não identificadas.")
+                else: st.warning(f"A aba '{aba_alvo}' está vazia.")
+            except: st.error(f"Erro ao conectar na aba '{aba_alvo}'. Verifique o compartilhamento.")
