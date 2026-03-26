@@ -8,7 +8,7 @@ st.set_page_config(page_title="Check-in & Performance | Nova Odessa", layout="wi
 
 # --- IDs DOS ARQUIVOS ---
 ID_PLANILHA_PRESENCA = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
-# SUBSTITUA ABAIXO PELO ID DA SUA NOVA PLANILHA GOOGLE SHEETS (A QUE TEM AS DINÂMICAS)
+# Certifique-se de que este ID abaixo é o da sua planilha do Google Sheets (não do Excel)
 ID_SHEETS_PROD = "1TR5oI_I4C9IA-QfUp0zaMmS4Dni1J8nG75Flxd1yguA" 
 
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbz3J-m4rTKD0Wkr58B2qDsGS81RwZl7-jt3HegpTBI5Fg1mHBJLzoHTvY4D2OW5ZXuClA/exec"
@@ -24,7 +24,8 @@ def buscar_senhas_db():
     try:
         r = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "buscar_senhas"}, timeout=5)
         return r.json() if r.status_code == 200 else {}
-    except: return {}
+    except:
+        return {}
 
 # --- LÓGICA DE SESSÃO ---
 if 'logado' not in st.session_state:
@@ -54,7 +55,8 @@ if not st.session_state.logado:
                     if str(s_input) == str(s_db):
                         st.session_state.update({'logado': True, 'usuario': u_sel, 'perfil': "Lider"})
                         st.rerun()
-                    else: st.error("Incorreta.")
+                    else:
+                        st.error("Incorreta.")
     else:
         s_adm = st.text_input("Senha Admin:", type="password")
         if st.button("Acessar"):
@@ -86,20 +88,27 @@ else:
                 if st.form_submit_button("Enviar"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca", "lider": st.session_state.usuario, "lista": envios})
                     st.success("Enviado!")
-        except: st.error("Erro na lista.")
+        except:
+            st.error("Erro na lista.")
 
     elif st.session_state.perfil == "Admin":
-        t1, t2, t3 = st.tabs(["Check-in", "Senhas", "Performance"])
+        t1, t2, t3 = st.tabs(["Check-in Diário", "Gestão de Senhas", "Performance"])
 
         with t1:
             st.write("Acompanhamento de Equipes")
+            for lider in LIDERES:
+                st.write(f"- {lider}")
 
         with t2:
-            if st.button("Ver Senhas"):
-                st.table(pd.DataFrame(list(buscar_senhas_db().items()), columns=['Líder', 'Senha']))
+            if st.button("Visualizar Senhas"):
+                senhas_atras = buscar_senhas_db()
+                if senhas_atras:
+                    st.table(pd.DataFrame(list(senhas_atras.items()), columns=['Líder', 'Senha']))
+                else:
+                    st.info("Aguardando cadastros.")
 
         with t3:
-            st.write("### 📈 Produtividade (Sheets)")
+            st.write("### 📈 Produtividade (Google Sheets)")
             col_f1, col_f2 = st.columns(2)
             dep = col_f1.selectbox("Depósito:", ["Todos", 102, 105, 107, 111, 302])
             op = col_f2.radio("Operação:", ["Conferência", "Picking"], horizontal=True)
@@ -107,28 +116,28 @@ else:
             aba = "Dinamica Conf" if op == "Conferência" else "Dinamica Picking"
             
             try:
-                # Leitura simplificada via CSV (Zero conflito de bibliotecas)
+                # Leitura simplificada via CSV
                 df_p = pd.read_csv(get_csv_url(ID_SHEETS_PROD, aba))
                 
                 u_col = df_p.columns[0]
-                ignorar = [u_col, 'Depósito', 'Total Geral', 'Total']
+                ignorar = [u_col, 'Depósito', 'Total Geral', 'Total', 'Soma de Total']
                 h_cols = [c for c in df_p.columns if c not in ignorar]
                 
                 if dep != "Todos" and 'Depósito' in df_p.columns:
                     df_p = df_p[df_p['Depósito'] == dep]
 
                 if h_cols:
-                    # Preparando os dados
-                    df_melt = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
-
+                    df_m = df_p.melt(id_vars=[u_col], value_vars=h_cols, var_name='Hora', value_name='Qtd').fillna(0)
                     g1, g2 = st.columns(2)
                     with g1:
-                        st.write(f"**Ranking Individual**")
-                        # Usando st.bar_chart DIRETAMENTE no dataframe agrupado
-                        rank = df_melt.groupby(u_col)['Qtd'].sum().sort_values(ascending=False)
-                        st.bar_chart(rank)
-                    
+                        st.write("**Ranking Individual**")
+                        # Agrupamento simples para evitar erro de versão do Altair
+                        st.bar_chart(df_m.groupby(u_col)['Qtd'].sum())
                     with g2:
-                        st.write("**Evolução por Hora**")
-                        evol = df_melt.groupby('Hora')['Qtd'].sum()
-                        st.line_chart(evol)
+                        st.write("**Fluxo por Hora**")
+                        st.line_chart(df_m.groupby('Hora')['Qtd'].sum())
+                else:
+                    st.info("Sem dados de horários encontrados.")
+            except Exception as erro_sheets:
+                st.warning(f"Erro ao ler a aba '{aba}'. Verifique se o nome está correto e se a planilha está compartilhada.")
+                # st.write(erro_sheets) # Descomente para depurar se necessário
