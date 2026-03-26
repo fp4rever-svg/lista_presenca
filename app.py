@@ -183,7 +183,23 @@ else:
                     st.warning(f"⚠️ {l}: Erro na leitura da aba")
 
         with tab2:
-            st.write("### Ações Globais")
+            st.write("### 🔑 Gestão de Acessos")
+            
+            # Botão para carregar/atualizar a lista de senhas
+            if st.button("🔄 Visualizar Líderes e Senhas"):
+                with st.spinner('Buscando dados de acesso...'):
+                    senhas_atuais = buscar_senhas_db()
+                    if senhas_atuais:
+                        # Convertemos o dicionário em um DataFrame para exibir como tabela
+                        df_acessos = pd.DataFrame(list(senhas_atuais.items()), columns=['Líder', 'Senha Cadastrada'])
+                        st.table(df_acessos) # Exibe uma tabela limpa e estática
+                    else:
+                        st.info("Nenhuma senha cadastrada ainda ou erro na conexão.")
+
+            st.markdown("---")
+            st.write("### 🛠️ Ações Globais")
+            
+            # Botão de Excel que você já tinha
             if st.button("📥 Gerar Excel Unificado (Todas as Equipes)"):
                 frames = []
                 for l in LIDERES:
