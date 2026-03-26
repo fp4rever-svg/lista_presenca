@@ -137,7 +137,7 @@ else:
 
             # Define o nome da aba conforme sua descrição (Case Sensitive)
             # Se no Sheets estiver "Dinamica Pick", mude aqui para "Dinamica Pick"
-            aba_alvo = "Dinamica Conf" if op == "Conferência" else "Dinamica Pick"
+            aba_alvo = "Conf" if op == "Conferência" else "Pick"
             
             try:
                 # Gerar URL de exportação direta
