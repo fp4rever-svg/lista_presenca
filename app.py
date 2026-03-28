@@ -206,7 +206,7 @@ else:
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as wr:
                         f_df.to_excel(wr, index=False)
-                    st.download_button("⬇️ Download Excel", output.getvalue(), "Relatorio.xlsx")
+                    st.download_button("⬇️ Download Excel", output.getvalue(), "Consolidado_Logistica.xlsx")
                 except: st.error("Erro ao gerar arquivo.")
 
             if st.button("🧹 Limpar Turno (Reset)"):
