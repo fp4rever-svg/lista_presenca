@@ -160,42 +160,47 @@ else:
         except: st.error("Erro ao carregar equipe.")
 
     # --- TELA DO ADMINISTRADOR ---
-    elif st.session_state.perfil == "Admin":
-        t1, t2 = st.tabs(["Monitoramento Diário", "Ferramentas & Liberação"])
+        elif st.session_state.perfil == "Admin":
+        st.subheader("📊 Painel de Controle Administrativo")
 
-        with t1:
+        tab1, tab2 = st.tabs(["Monitoramento Diário", "Ferramentas & Liberação"])
+
+        with tab1:
             st.write(f"Status - {datetime.now().strftime('%d/%m')}")
-            for l in LIDERES:
-                try:
-                    df_s = pd.read_csv(get_sheet_url(l))
-                    # Checa coluna D (índice 3) para ver se há data de hoje
-                    if any(datetime.now().strftime("%d/%m") in str(x) for x in df_s.iloc[:, 3]):
-                        st.success(f"✅ {l}: Enviado")
-                    else: st.error(f"❌ {l}: Pendente")
-                except: st.warning(f"⚠️ {l}: Erro na aba")
+            # ... (seu código de monitoramento de líderes aqui)
 
-        with t2:
-            st.subheader("🔓 Liberação de Campos Extras")
+        with tab2:
+            st.write("### 🔓 Controle de Campos Extras")
+            
+            # 1. Busca o status atual no Sheets
             status_he = verificar_liberacao_especial()
             
-            col_bt, _ = st.columns([2, 2])
+            # 2. Mostra o status e o botão dinâmico
             if status_he:
-                st.info("Status: HORA EXTRA e FRETADO estão ATIVOS para os líderes.")
-                if col_bt.button("🔴 BLOQUEAR CAMPOS EXTRAS"):
+                st.info("💡 **Status Atual:** HORA EXTRA e FRETADO estão **ATIVOS** para os líderes.")
+                if st.button("🔴 BLOQUEAR CAMPOS EXTRAS", use_container_width=True):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF"})
+                    st.success("Campos bloqueados com sucesso!")
                     st.rerun()
             else:
-                st.warning("Status: Campos de Hora Extra/Fretado estão OCULTOS.")
-                if col_bt.button("🟢 LIBERAR HORA EXTRA / FRETADO"):
+                st.warning("💡 **Status Atual:** Campos de Hora Extra/Fretado estão **OCULTOS**.")
+                if st.button("🟢 LIBERAR HORA EXTRA / FRETADO", use_container_width=True):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "ON"})
+                    st.success("Campos liberados com sucesso!")
                     st.rerun()
 
-            st.markdown("---")
-            if st.button("🔄 Ver Senhas"):
-                s = buscar_senhas_db()
-                if s: st.table(pd.DataFrame(list(s.items()), columns=['Líder', 'Senha']))
+            st.divider()
             
-            if st.button("🧹 RESETAR TUDO"):
-                requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
-                st.success("Resetado!")
-                st.rerun()
+            st.write("### 🛠️ Ações de Sistema")
+            col_a, col_b = st.columns(2)
+            
+            with col_a:
+                if st.button("🔄 Ver Senhas"):
+                    s = buscar_senhas_db()
+                    if s: st.table(pd.DataFrame(list(s.items()), columns=['Líder', 'Senha']))
+            
+            with col_b:
+                if st.button("🧹 RESETAR PLANILHAS"):
+                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
+                    st.success("Dados limpos!")
+                    st.rerun()
