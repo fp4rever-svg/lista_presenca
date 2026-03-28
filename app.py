@@ -25,7 +25,7 @@ st.markdown("""
 
 # --- CONFIGURAÇÕES ---
 SHEET_ID = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
-URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbwLDpdSgnGTPwciE-25mUel8Zm46zovwoi9o_AnQrkkKUIOfRK6EuPH3YVD0M0TrBJY2Q/exec"
+URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbz3J-m4rTKD0Wkr58B2qDsGS81RwZl7-jt3HegpTBI5Fg1mHBJLzoHTvY4D2OW5ZXuClA/exec"
 
 LIDERES = ["Carol", "Elisangela", "Lais Alves", "Leticia", "Renato", "Thiago"]
 SENHA_ADMIN = "1234"
@@ -160,7 +160,7 @@ else:
         except: st.error("Erro ao carregar equipe.")
 
     # --- TELA DO ADMINISTRADOR ---
-        elif st.session_state.perfil == "Admin":
+    elif st.session_state.perfil == "Admin":
         st.subheader("📊 Painel de Controle Administrativo")
 
         tab1, tab2 = st.tabs(["Monitoramento Diário", "Ferramentas & Liberação"])
