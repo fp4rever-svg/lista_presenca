@@ -49,16 +49,28 @@ if not st.session_state.logado:
     if p_tipo == "Líder":
         u_sel = st.selectbox("Selecione seu nome:", ["--"] + LIDERES)
         if u_sel != "--":
-            s_in = st.text_input("Senha:", type="password")
-            if st.button("Entrar"):
-                st.session_state.update({'logado': True, 'usuario': u_sel, 'perfil': "Lider"})
-                st.rerun()
-    else:
-        s_adm = st.text_input("Senha Admin:", type="password")
-        if st.button("Acessar"):
-            if s_adm == SENHA_ADMIN:
-                st.session_state.update({'logado': True, 'usuario': "Admin", 'perfil': "Admin"})
-                st.rerun()
+            # Busca as senhas direto no banco de dados do Sheets
+            dicionario_senhas = buscar_senhas_db()
+            senha_registrada = dicionario_senhas.get(u_sel)
+            
+            if not senha_registrada:
+                st.warning(f"Olá {u_sel}, você ainda não tem uma senha.")
+                nova_s = st.text_input("Crie uma senha de acesso:", type="password", key="new_pass")
+                if st.button("Cadastrar Senha"):
+                    if nova_s:
+                        payload = {"tipo": "definir_senha", "lider": u_sel, "nova_senha": nova_s}
+                        requests.post(URL_SCRIPT_GOOGLE, json=payload)
+                        st.success("Senha cadastrada com sucesso! Clique em Entrar.")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                senha_input = st.text_input("Digite sua senha:", type="password", key="login_pass")
+                if st.button("Entrar"):
+                    if str(senha_input) == str(senha_registrada):
+                        st.session_state.update({'logado': True, 'usuario': u_sel, 'perfil': "Lider"})
+                        st.rerun()
+                    else:
+                        st.error("Senha incorreta. Tente novamente.")
 
 # ==========================================
 # ÁREA LOGADA
