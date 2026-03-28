@@ -17,19 +17,23 @@ SENHA_ADMIN = "1234"
 
 # --- FUNÇÕES DE SUPORTE ---
 def get_sheet_url(aba):
-    ts = int(time.time()) # Força o Google a não usar cache
+    ts = int(time.time())
     aba_enc = urllib.parse.quote(aba)
     return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={aba_enc}&t={ts}"
+
+def buscar_senhas_db():
+    try:
+        r = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "buscar_senhas"}, timeout=10)
+        return r.json() if r.status_code == 200 else {}
+    except: return {}
 
 def verificar_liberacao_especial():
     try:
         url = get_sheet_url("Config_Geral")
         df = pd.read_csv(url, header=None)
-        # Pega a célula B1
         status = str(df.iloc[0, 1]).strip().upper()
         return True if status == "ON" else False
-    except:
-        return False
+    except: return False
 
 # --- CONTROLE DE SESSÃO ---
 if 'logado' not in st.session_state:
@@ -47,7 +51,6 @@ if not st.session_state.logado:
         if u_sel != "--":
             s_in = st.text_input("Senha:", type="password")
             if st.button("Entrar"):
-                # Busca senha (simplificado para evitar erro de conexão no login)
                 st.session_state.update({'logado': True, 'usuario': u_sel, 'perfil': "Lider"})
                 st.rerun()
     else:
@@ -70,7 +73,7 @@ else:
     # --- TELA LIDER ---
     if st.session_state.perfil == "Lider":
         lider = st.session_state.usuario
-        liberado = verificar_liberacao_especial() # Verifica se ON no Sheets
+        liberado = verificar_liberacao_especial()
         
         try:
             df = pd.read_csv(get_sheet_url(lider))
@@ -78,35 +81,52 @@ else:
 
             with st.form("form_lider"):
                 st.subheader(f"Lista de {lider}")
-                if liberado:
-                    st.success("⚡ HORA EXTRA E FRETADO LIBERADOS")
                 
                 lista_enviar = []
+                # Cabeçalho dinâmico
+                if liberado:
+                    st.info("⏰ MODO HORA EXTRA / FRETADO ATIVO")
+                    cols_head = st.columns([3, 1, 1, 3])
+                    cols_head[0].write("**Nome**")
+                    cols_head[1].write("**H.E.**")
+                    cols_head[2].write("**Fret.**")
+                    cols_head[3].write("**Observação**")
+                else:
+                    cols_head = st.columns([3, 1, 3])
+                    cols_head[0].write("**Nome**")
+                    cols_head[1].write("**Presença**")
+                    cols_head[2].write("**Observação**")
+
                 for i, row in df.iterrows():
                     if pd.isna(row['Colaborador']): continue
                     
-                    # Layout Dinâmico
-                    cols = st.columns([3, 1, 1, 1, 3])
-                    cols[0].write(row['Colaborador'])
-                    p_ok = cols[1].checkbox("Pres.", key=f"p_{i}")
+                    h_val, f_val, p_val = "Não", "Não", "FALTA"
                     
-                    h_val, f_val = "Não", "Não"
                     if liberado:
-                        if cols[2].checkbox("HE", key=f"he_{i}"): h_val = "Sim"
-                        if cols[3].checkbox("FR", key=f"fr_{i}"): f_val = "Sim"
-                    
-                    obs = cols[4].text_input("Obs", key=f"o_{i}", label_visibility="collapsed")
-                    lista_enviar.append({"nome": row['Colaborador'], "status": "OK" if p_ok else "FALTA", "he": h_val, "fretado": f_val, "obs": obs})
+                        c = st.columns([3, 1, 1, 3])
+                        c[0].write(row['Colaborador'])
+                        if c[1].checkbox("⚡", key=f"he_{i}"): h_val = "Sim"
+                        if c[2].checkbox("🚌", key=f"fr_{i}"): f_val = "Sim"
+                        obs = c[3].text_input("", key=f"o_{i}", label_visibility="collapsed")
+                        p_val = "OK" # No modo HE, assume-se presença OK por padrão ou mantém neutro
+                    else:
+                        c = st.columns([3, 1, 3])
+                        c[0].write(row['Colaborador'])
+                        if c[1].checkbox("OK", key=f"p_{i}"): p_val = "OK"
+                        obs = c[2].text_input("", key=f"o_{i}", label_visibility="collapsed")
 
-                if st.form_submit_button("✅ ENVIAR"):
+                    lista_enviar.append({"nome": row['Colaborador'], "status": p_val, "he": h_val, "fretado": f_val, "obs": obs})
+
+                if st.form_submit_button("✅ ENVIAR DADOS"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider, "lista": lista_enviar})
-                    st.success("Enviado!")
+                    st.success("Dados enviados com sucesso!")
+                    st.balloons()
 
-        except: st.error("Erro ao carregar lista.")
+        except Exception as e: st.error(f"Erro ao carregar lista: {e}")
 
     # --- TELA ADMIN ---
     elif st.session_state.perfil == "Admin":
-        t1, t2 = st.tabs(["Monitoramento", "Ferramentas"])
+        t1, t2 = st.tabs(["Monitoramento", "Ferramentas & Acessos"])
 
         with t1:
             st.subheader("Envios de Hoje")
@@ -115,23 +135,22 @@ else:
                 try:
                     df_s = pd.read_csv(get_sheet_url(l))
                     if any(hoje in str(x) for x in df_s.iloc[:, 3]):
-                        st.success(f"✅ {l}")
-                    else: st.error(f"❌ {l}")
-                except: st.warning(f"⚠️ {l}")
+                        st.success(f"✅ {l}: Enviado")
+                    else: st.error(f"❌ {l}: Pendente")
+                except: st.warning(f"⚠️ {l}: Erro na aba")
 
         with t2:
-            st.subheader("⚙️ Configurações")
-            
-            # Botão de Liberação
+            # 1. Liberação Especial
+            st.subheader("⚙️ Controle de Visibilidade")
             at_status = verificar_liberacao_especial()
             if at_status:
-                st.write("Status: **LIBERADO**")
+                st.success("Status: CAMPOS EXTRAS LIBERADOS")
                 if st.button("🔴 BLOQUEAR H.E./FRETADO"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF"})
                     time.sleep(1)
                     st.rerun()
             else:
-                st.write("Status: **OCULTO**")
+                st.warning("Status: CAMPOS EXTRAS OCULTOS")
                 if st.button("🟢 LIBERAR H.E./FRETADO"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "ON"})
                     time.sleep(1)
@@ -139,24 +158,34 @@ else:
 
             st.divider()
             
-            # BOTÃO DE EXPORTAR (RESTAURADO)
+            # 2. Gestão de Senhas (RESTAURADO)
+            st.subheader("🔑 Gestão de Acessos")
+            if st.button("🔄 Visualizar Líderes e Senhas"):
+                senhas = buscar_senhas_db()
+                if senhas:
+                    df_acessos = pd.DataFrame(list(senhas.items()), columns=['Líder', 'Senha'])
+                    st.table(df_acessos)
+                else:
+                    st.info("Nenhuma senha encontrada.")
+
+            st.divider()
+            
+            # 3. Exportação (RESTAURADO)
             st.subheader("📊 Exportação")
             if st.button("📥 Gerar Excel Unificado"):
                 try:
                     tabs = []
                     for l in LIDERES:
                         d = pd.read_csv(get_sheet_url(l))
-                        d['Lider'] = l
+                        d['Lider_Responsavel'] = l
                         tabs.append(d)
-                    
                     full_df = pd.concat(tabs)
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr:
                         full_df.to_excel(wr, index=False)
-                    
-                    st.download_button("⬇️ Baixar Arquivo", out.getvalue(), "Relatorio.xlsx")
+                    st.download_button("⬇️ Baixar Arquivo Excel", out.getvalue(), "Relatorio_Checkin.xlsx")
                 except: st.error("Erro ao gerar arquivo.")
 
-            if st.button("🧹 RESETAR TUDO"):
+            if st.button("🧹 RESETAR TUDO (LIMPAR TURNO)"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
