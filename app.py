@@ -17,6 +17,7 @@ SENHA_ADMIN = "1234"
 
 # --- FUNÇÕES DE SUPORTE ---
 def get_sheet_url(aba):
+    # Timestamp para evitar cache do Google
     ts = int(time.time())
     aba_enc = urllib.parse.quote(aba)
     return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={aba_enc}&t={ts}"
@@ -87,7 +88,7 @@ else:
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
         with st.expander("➕ Solicitar inclusão de novo colaborador"):
-            with st.form("form_novo_colab"):
+            with st.form("form_novo_colab", clear_on_submit=True):
                 nome_novo = st.text_input("Nome Completo:")
                 area_nova = st.text_input("Área/Matrícula:")
                 if st.form_submit_button("Enviar Solicitação"):
@@ -99,41 +100,58 @@ else:
         st.divider()
         is_extra = verificar_liberacao_especial()
         
+        # Ajuste no carregamento da lista para evitar o erro vermelho
         try:
-            df_lista = pd.read_csv(get_sheet_url(lider_nome))
-            with st.form("chamada_lider"):
-                st.subheader(f"Chamada - {lider_nome}")
-                dados_para_envio = []
-                cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
-                
-                h = st.columns(cols)
-                h[0].write("**MAT**"); h[1].write("**NOME**")
-                if is_extra: h[2].write("**HE**"); h[3].write("**FRT**"); h[4].write("**OBS**")
-                else: h[2].write("**PRES**"); h[3].write("**OBS**")
-
-                for i, row in df_lista.iterrows():
-                    if pd.isna(row.iloc[0]): continue 
-                    nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
-                    ln = st.columns(cols)
-                    ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
-                    r_he, r_fr, r_pr = "Não", "Não", "FALTA"
-
-                    if is_extra:
-                        if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
-                        if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
-                        r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
-                        r_pr = "OK"
-                    else:
-                        if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
-                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
+            url_lider = get_sheet_url(lider_nome)
+            df_lista = pd.read_csv(url_lider)
+            
+            if df_lista.empty:
+                st.info("Sua lista de colaboradores está vazia ou ainda não foi carregada.")
+            else:
+                with st.form("chamada_lider"):
+                    st.subheader(f"Chamada - {lider_nome}")
+                    dados_para_envio = []
+                    cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
                     
-                    dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
+                    h = st.columns(cols)
+                    h[0].write("**MAT**"); h[1].write("**NOME**")
+                    if is_extra: h[2].write("**HE**"); h[3].write("**FRT**"); h[4].write("**OBS**")
+                    else: h[2].write("**PRES**"); h[3].write("**OBS**")
 
-                if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio})
-                    st.success("Check-in enviado!")
-                    time.sleep(1); st.rerun()
-        except: st.error("Erro ao carregar lista.")
+                    for i, row in df_lista.iterrows():
+                        if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
+                        nome_colab = str(row.iloc[0]) if not pd.isna(row.iloc[0]) else "N/A"
+                        matricula = str(row.iloc[4]) if not pd.isna(row.iloc[4]) else "N/A"
+                        
+                        ln = st.columns(cols)
+                        ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
+                        r_he, r_fr, r_pr = "Não", "Não", "FALTA"
+
+                        if is_extra:
+                            if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
+                            if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
+                            r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
+                            r_pr = "OK"
+                        else:
+                            if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
+                            r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
+                        
+                        dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
+
+                    enviar = st.form_submit_button("✅ FINALIZAR E ENVIAR")
+                    if enviar:
+                        with st.spinner("Gravando dados..."):
+                            resp = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio})
+                            if resp.status_code == 200:
+                                st.success("Check-in enviado com sucesso!")
+                                time.sleep(2)
+                                st.rerun()
+                            else:
+                                st.error("Erro na comunicação com o servidor.")
+        except Exception as e:
+            # Exibe erro apenas se não for um problema de carregamento inicial
+            if not st.session_state.get('form_enviado'):
+                st.error(f"Erro ao carregar lista: {e}")
 
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
@@ -143,7 +161,6 @@ else:
             for l in LIDERES:
                 try:
                     df_check = pd.read_csv(get_sheet_url(l))
-                    # Pega horário na coluna F (índice 5)
                     horarios = df_check.iloc[:, 5].dropna().astype(str)
                     horarios = horarios[horarios.str.strip() != ""]
                     if not horarios.empty:
@@ -192,11 +209,8 @@ else:
                         resumo_lideres = []
                         for l in LIDERES:
                             try:
-                                # Lê a aba do líder para contar os colaboradores REAIS (coluna B)
                                 df_base = pd.read_csv(get_sheet_url(l))
-                                # Conta linhas onde a coluna de Nome não está vazia
                                 qtd_real_colab = len(df_base[df_base.iloc[:, 0].notna()])
-                                
                                 hist_lider = df_f[df_f['Lider'] == l]
                                 dias_enviados = hist_lider['Data'].nunique()
                                 total_faltas = (hist_lider['Status'] == 'FALTA').sum()
