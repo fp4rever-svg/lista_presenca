@@ -34,15 +34,15 @@ def verificar_liberacao_especial():
         return True if str(df.iloc[0, 1]).strip().upper() == "ON" else False
     except: return False
 
-# --- INICIALIZAÇÃO DO SESSION STATE (EVITA ERRO DE ATRIBUTO) ---
+# --- INICIALIZAÇÃO DO SESSION STATE ---
 if 'logado' not in st.session_state:
     st.session_state.logado = False
 if 'usuario' not in st.session_state:
     st.session_state.usuario = None
 if 'perfil' not in st.session_state:
     st.session_state.perfil = None
-if 'msg_sucesso' not in st.session_state:
-    st.session_state.msg_sucesso = False
+if 'confirmacao_envio' not in st.session_state:
+    st.session_state.confirmacao_envio = False
 
 # ==========================================
 # ÁREA DE ACESSO (LOGIN)
@@ -93,13 +93,14 @@ else:
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
         
-        # Se acabou de enviar, mostra SÓ o sucesso e para por aqui
-        if st.session_state.msg_sucesso:
-            st.success("✅ Relatório enviado com sucesso!")
-            if st.button("Realizar Nova Chamada"):
-                st.session_state.msg_sucesso = False
+        # --- TELA DE SUCESSO APÓS ENVIAR ---
+        if st.session_state.confirmacao_envio:
+            st.success("### ✅ Dados salvos com sucesso!")
+            st.info("As informações já foram enviadas para a planilha oficial.")
+            if st.button("Fazer novo Check-in / Voltar"):
+                st.session_state.confirmacao_envio = False
                 st.rerun()
-            st.stop()
+            st.stop() # Interrompe o restante do código para não mostrar a lista de novo
 
         with st.expander("➕ Solicitar inclusão de novo colaborador"):
             with st.form("form_novo_colab", clear_on_submit=True):
@@ -115,7 +116,6 @@ else:
         is_extra = verificar_liberacao_especial()
         
         try:
-            # Tenta carregar a lista silenciosamente
             df_lista = pd.read_csv(get_sheet_url(lider_nome))
             
             with st.form("chamada_lider"):
@@ -147,7 +147,7 @@ else:
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
                 if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    with st.spinner("Enviando dados..."):
+                    with st.spinner("Gravando dados..."):
                         resp = requests.post(URL_SCRIPT_GOOGLE, json={
                             "tipo": "presenca_completa", 
                             "lider": lider_nome, 
@@ -155,11 +155,13 @@ else:
                             "is_extra": is_extra 
                         })
                         if resp.status_code == 200:
-                            st.session_state.msg_sucesso = True
+                            st.session_state.confirmacao_envio = True
                             st.rerun()
+                        else:
+                            st.error("Erro ao salvar. Verifique sua conexão.")
         except:
-            # Se der erro real ou estiver carregando, mostra apenas um spinner discreto
-            st.spinner("Sincronizando com Google Sheets...")
+            # Silencia a mensagem de erro durante o carregamento inicial
+            pass
 
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
@@ -184,7 +186,7 @@ else:
         with t3:
             st.subheader("Controle de Operação")
             lib_status = verificar_liberacao_especial()
-            st.info(f"O modo atual é: **{'HORA EXTRA/FRETADO' if lib_status else 'ESCALA NORMAL'}**")
+            st.info(f"Modo atual: **{'HORA EXTRA' if lib_status else 'ESCALA NORMAL'}**")
             if st.button("ALTERAR OPERAÇÃO"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF" if lib_status else "ON"})
                 st.rerun()
