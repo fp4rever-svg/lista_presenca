@@ -154,28 +154,23 @@ else:
 
         with t1:
             st.subheader("Envios de Hoje")
-            # Pega a data de hoje no formato dia/mês (ex: 01/04)
-            hoje = datetime.now().strftime("%d/%m")
+            # Data exata no formato que o Google vai gravar: dd/MM/yyyy
+            hoje_exato = datetime.now().strftime("%d/%m/%Y")
             
             for l in LIDERES:
                 try:
                     url_lider = get_sheet_url(l)
                     d_ch = pd.read_csv(url_lider)
                     
-                    # Se a planilha estiver vazia ou não tiver colunas suficientes
                     if d_ch.empty:
                         st.error(f"❌ {l}: Planilha Vazia")
                         continue
 
-                    # TESTE DINÂMICO: Procura o 'hoje' em todas as colunas de texto
-                    # Isso evita erro se você moveu a coluna de data de lugar
-                    encontrou_envio = False
-                    for col in d_ch.columns:
-                        if d_ch[col].astype(str).str.contains(hoje).any():
-                            encontrou_envio = True
-                            break
+                    # Agora verificamos na Coluna D (índice 3) se a data é IGUAL a hoje
+                    # Usamos str.strip() para remover espaços invisíveis
+                    lista_datas = d_ch.iloc[:, 3].astype(str).str.strip().tolist()
                     
-                    if encontrou_envio:
+                    if hoje_exato in lista_datas:
                         st.success(f"✅ {l}: Concluído")
                     else:
                         st.error(f"❌ {l}: Pendente")
