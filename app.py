@@ -55,21 +55,20 @@ if not st.session_state.logado:
                 st.warning(f"Olá {lider_sel}, defina sua primeira senha.")
                 nova_senha = st.text_input("Nova Senha:", type="password")
                 if st.button("Cadastrar e Entrar"):
-                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "definir_senha", "lider": lider_sel, "nova_senha": nova_senha})
+                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "definir_senha", "lider": l_sel, "nova_senha": nova_senha})
                     st.session_state.update({'logado': True, 'usuario': lider_sel, 'perfil': "Lider"})
                     st.rerun()
             else:
                 senha_input = st.text_input("Senha de Acesso:", type="password")
                 if st.button("Entrar"):
                     if str(senha_input) == str(senha_no_db):
-                        st.session_state.update({'logado': True, 'usuario': lider_sel, 'perfil': "Lider"})
+                        st.session_state.update({'logado': True, 'usuario': l_sel, 'perfil': "Lider"})
                         st.rerun()
                     else: st.error("Senha incorreta.")
-
-    elif perfil_escolhido == "Administrador":
-        senha_adm_input = st.text_input("Senha Administrativa:", type="password")
+    else:
+        s_adm = st.text_input("Senha Administrativa:", type="password")
         if st.button("Acessar Painel Admin"):
-            if senha_adm_input == SENHA_ADMIN:
+            if s_adm == SENHA_ADMIN:
                 st.session_state.update({'logado': True, 'usuario': "Administrador", 'perfil': "Admin"})
                 st.rerun()
             else: st.error("Acesso Negado.")
@@ -98,13 +97,6 @@ else:
                 dados_para_envio = []
                 cols = [3, 1, 1, 3] if is_extra else [3, 1, 3]
                 
-                h = st.columns(cols)
-                h[0].write("**Nome**")
-                if is_extra:
-                    h[1].write("**H.E.**"); h[2].write("**Fret.**"); h[3].write("**Obs**")
-                else:
-                    h[1].write("**Presença**"); h[2].write("**Obs**")
-
                 for i, row in df_lista.iterrows():
                     if pd.isna(row['Colaborador']): continue
                     ln = st.columns(cols)
@@ -124,7 +116,20 @@ else:
 
                 if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
                     requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio})
-                    st.success("Check-in enviado!")
+                    st.success("Enviado com sucesso!")
+
+            # --- FUNCIONALIDADE: SOLICITAR INCLUSÃO ---
+            st.divider()
+            with st.expander("➕ Solicitar Novo Colaborador"):
+                with st.form("solicitacao"):
+                    n_nome = st.text_input("Nome Completo:")
+                    n_setor = st.selectbox("Setor:", ["Recebimento", "Separação", "Expedição", "Outros"])
+                    if st.form_submit_button("Enviar para Admin"):
+                        if n_nome:
+                            requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "solicitar_inclusao", "nome": n_nome, "lider": lider_nome, "area": n_setor})
+                            st.success("Solicitação enviada!")
+                        else: st.warning("Digite o nome.")
+
         except: st.error("Erro ao carregar lista.")
 
     # --- VISÃO DO ADMIN ---
@@ -137,64 +142,61 @@ else:
             for l in LIDERES:
                 try:
                     d_ch = pd.read_csv(get_sheet_url(l))
-                    # Verifica na Coluna D (índice 3) se a data de hoje está presente
+                    # Verifica na Coluna D (índice 3)
                     if not d_ch.empty and d_ch.iloc[:, 3].astype(str).str.contains(hoje).any():
                         st.success(f"✅ {l}: Concluído")
                     else: st.error(f"❌ {l}: Pendente")
                 except: st.warning(f"⚠️ {l}: Sem conexão")
 
         with t2:
-            st.subheader("Novas Solicitações")
+            st.subheader("Novas Solicitações dos Líderes")
             try:
-                st.dataframe(pd.read_csv(get_sheet_url("Pendentes")), use_container_width=True)
-            except: st.info("Sem solicitações pendentes.")
+                df_p = pd.read_csv(get_sheet_url("Pendentes"))
+                st.dataframe(df_p, use_container_width=True)
+            except: st.info("Nenhuma pendência.")
 
         with t3:
-            st.subheader("Ferramentas de Gestão")
-            lib_status = verificar_liberacao_especial()
-            c_a, c_b = st.columns(2)
-            with c_a:
-                if lib_status:
-                    st.button("🔴 DESATIVAR H.E./FRETADO", on_click=lambda: requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF"}))
-                else:
-                    st.button("🟢 ATIVAR H.E./FRETADO", on_click=lambda: requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "ON"}))
+            st.subheader("Ações Administrativas")
+            lib = verificar_liberacao_especial()
+            if lib:
+                st.success("MODO H.E.: ATIVO")
+                if st.button("🔴 DESATIVAR"):
+                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF"})
+                    time.sleep(1); st.rerun()
+            else:
+                st.warning("MODO H.E.: OCULTO")
+                if st.button("🟢 ATIVAR"):
+                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "ON"})
+                    time.sleep(1); st.rerun()
             
             st.divider()
             if st.button("🔑 Ver Senhas"):
-                s = buscar_senhas_db()
-                if s: st.table(pd.DataFrame(list(s.items()), columns=['Líder', 'Senha']))
+                senhas = buscar_senhas_db()
+                if senhas: st.table(pd.DataFrame(list(senhas.items()), columns=['Líder', 'Senha']))
 
-            if st.button("📥 Baixar Relatório"):
+            if st.button("📥 Baixar Excel"):
                 try:
-                    dfs = [pd.read_csv(get_sheet_url(l)).assign(Lider=l) for l in LIDERES]
+                    all_dfs = [pd.read_csv(get_sheet_url(l)).assign(Lider=l) for l in LIDERES]
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr:
-                        pd.concat(dfs).to_excel(wr, index=False)
-                    st.download_button("⬇️ Download", out.getvalue(), "Relatorio_Geral.xlsx")
-                except: st.error("Erro ao gerar arquivo.")
+                        pd.concat(all_dfs).to_excel(wr, index=False)
+                    st.download_button("⬇️ Download", out.getvalue(), "Relatorio.xlsx")
+                except: st.error("Erro ao exportar.")
 
-            if st.button("🧹 Limpar Turno (Reset)"):
+            if st.button("🧹 Resetar Turno"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
 
         with t4:
-            st.subheader("Análise Mensal de Presença")
+            st.subheader("Análise Mensal")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
-                    # Força cabeçalhos para evitar erro de deslocamento de coluna
                     df_h.columns = ["Data", "Hora", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
-                    
-                    l_filt = st.multiselect("Filtrar Líder:", df_h['Lider'].unique(), default=df_h['Lider'].unique())
-                    df_f = df_h[df_h['Lider'].isin(l_filt)]
-                    
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Registros", len(df_f))
-                    m2.metric("Faltas", len(df_f[df_f['Status'] == 'FALTA']))
-                    m3.metric("% Presença", f"{(len(df_f[df_f['Status'] == 'OK'])/len(df_f)*100):.1f}%" if len(df_f)>0 else "0%")
-
-                    st.write("### Faltas por Líder")
-                    df_graf = df_f[df_f['Status'] == 'FALTA'].groupby('Lider').size().reset_index(name='Total')
-                    st.bar_chart(df_graf.set_index('Lider'))
-                else: st.info("Histórico ainda vazio.")
-            except Exception as e: st.error(f"Erro no Histórico: {e}")
+                    l_sel = st.multiselect("Líder:", df_h['Lider'].unique(), default=df_h['Lider'].unique())
+                    df_f = df_h[df_h['Lider'].isin(l_sel)]
+                    st.metric("Faltas Totais", len(df_f[df_f['Status'] == 'FALTA']))
+                    df_g = df_f[df_f['Status'] == 'FALTA'].groupby('Lider').size().reset_index(name='Qtd')
+                    st.bar_chart(df_g.set_index('Lider'))
+                else: st.info("Histórico vazio.")
+            except: st.warning("Aba 'Historico' não encontrada.")
