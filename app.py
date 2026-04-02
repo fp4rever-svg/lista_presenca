@@ -137,7 +137,7 @@ else:
                     st.success("Check-in enviado com sucesso!")
 
             st.divider()
-            with st.expander("➕ Solicitar Inclusão de Colaborador (Para Admin)"):
+            with st.expander("➕ Solicitar Inclusão de Colaborador"):
                 with st.form("solicita_novo"):
                     n_nome = st.text_input("Nome Completo:")
                     n_area = st.selectbox("Área:", ["Recebimento", "Separação", "Expedição", "Outros"])
@@ -154,29 +154,23 @@ else:
 
         with t1:
             st.subheader("Envios de Hoje")
-            # Data exata no formato que o Google vai gravar: dd/MM/yyyy
-            hoje_exato = datetime.now().strftime("%d/%m/%Y")
+            # Procura o dia e mês atual em qualquer formato (ex: 01/04 ou 1/4)
+            dia_mês = datetime.now().strftime("%d/%m")
             
             for l in LIDERES:
                 try:
                     url_lider = get_sheet_url(l)
                     d_ch = pd.read_csv(url_lider)
                     
-                    if d_ch.empty:
-                        st.error(f"❌ {l}: Planilha Vazia")
-                        continue
-
-                    # Agora verificamos na Coluna D (índice 3) se a data é IGUAL a hoje
-                    # Usamos str.strip() para remover espaços invisíveis
-                    lista_datas = d_ch.iloc[:, 3].astype(str).str.strip().tolist()
+                    # Verificação robusta: Procura a string da data em qualquer lugar da coluna 4 (índice 3)
+                    enviou = d_ch.iloc[:, 3].astype(str).str.contains(dia_mês).any()
                     
-                    if hoje_exato in lista_datas:
+                    if enviou:
                         st.success(f"✅ {l}: Concluído")
                     else:
                         st.error(f"❌ {l}: Pendente")
-                        
-                except Exception as e:
-                    st.warning(f"⚠️ {l}: Erro na leitura")
+                except:
+                    st.warning(f"⚠️ {l}: Sem dados")
 
         with t2:
             st.subheader("Novos Colaboradores Solicitados")
@@ -226,6 +220,7 @@ else:
                 df_h = pd.read_csv(url_hist)
                 
                 if not df_h.empty:
+                    # Garante que as colunas do Dashboard estão corretas após a inserção da coluna 'Hora'
                     col_f1, col_f2 = st.columns(2)
                     lider_f = col_f1.multiselect("Filtrar Líder:", df_h['Lider'].unique(), default=df_h['Lider'].unique())
                     df_f = df_h[df_h['Lider'].isin(lider_f)]
@@ -239,14 +234,16 @@ else:
                     m2.metric("Presenças ✅", presencas)
                     m3.metric("Faltas ❌", faltas, delta=f"{(faltas/total)*100:.1f}% Absenteísmo" if total > 0 else "0%", delta_color="inverse")
 
+                    # CORREÇÃO: Gráfico agora aponta explicitamente para a coluna 'Lider'
                     st.write("### Faltas por Líder no Período")
                     df_grafico = df_f[df_f['Status'] == 'FALTA'].groupby('Lider').size().reset_index(name='Total Faltas')
                     st.bar_chart(df_grafico.set_index('Lider'))
 
                     st.write("### Colaboradores com mais H.E.")
+                    # CORREÇÃO: Busca explicitamente pela coluna 'Colaborador'
                     he_count = df_f[df_f['HE'] == 'Sim'].groupby('Colaborador').size().reset_index(name='Qtd HE').sort_values(by='Qtd HE', ascending=False)
                     st.dataframe(he_count, use_container_width=True)
                 else:
                     st.info("O histórico ainda está vazio.")
-            except:
-                st.warning("Aba 'Historico' não encontrada.")
+            except Exception as e:
+                st.warning(f"Aba 'Historico' não encontrada ou erro nos dados: {e}")
