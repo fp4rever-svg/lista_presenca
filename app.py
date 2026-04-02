@@ -216,13 +216,13 @@ else:
                 st.rerun()
 
         with t4:
-            st.subheader("📊 Dashboard")
+            st.subheader("📊 Dashboard de Performance")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
-                    # Garante que a coluna 'Data' seja interpretada corretamente ignorando textos inválidos
+                    # Correção de Datas
                     df_h['Data_DT'] = pd.to_datetime(df_h.iloc[:, 0], dayfirst=True, errors='coerce').dt.date
-                    df_h = df_h.dropna(subset=['Data_DT']) # Remove linhas com data inválida (ex: cabeçalhos repetidos)
+                    df_h = df_h.dropna(subset=['Data_DT'])
                     
                     c1, c2 = st.columns(2)
                     d_ini = c1.date_input("Início:", df_h['Data_DT'].min())
@@ -230,18 +230,39 @@ else:
                     
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
                     
-                    st.metric("Total de Registros", len(df_f))
-                    
-                    # Dashboard por Líder (Coluna 4 do histórico geralmente é o Líder)
-                    if len(df_f.columns) >= 5:
-                        st.subheader("Performance por Equipe")
-                        resumo = df_f.groupby(df_f.columns[4]).agg({df_f.columns[0]: 'count'})
-                        resumo.columns = ['Total Check-ins']
-                        st.table(resumo)
+                    if not df_f.empty:
+                        resumo_lideres = []
+                        for l in LIDERES:
+                            try:
+                                # Pega a base total do líder para saber o denominador
+                                df_base = pd.read_csv(get_sheet_url(l))
+                                total_colab_base = len(df_base[df_base.iloc[:, 0].notna()])
+                                
+                                # Filtra histórico desse líder
+                                dados_lider = df_f[df_f.iloc[:, 4] == l]
+                                dias_chamada = dados_lider.iloc[:, 0].nunique()
+                                total_faltas = len(dados_lider[dados_lider.iloc[:, 5] == "FALTA"])
+                                total_presencas = len(dados_lider[dados_lider.iloc[:, 5] == "OK"])
+                                
+                                if dias_chamada > 0 and total_colab_base > 0:
+                                    # Cálculo: Faltas / (Total Colaboradores * Dias de Chamada)
+                                    perc_abs = (total_faltas / (total_colab_base * dias_chamada)) * 100
+                                    resumo_lideres.append({
+                                        "Líder": l,
+                                        "Colab_Base": total_colab_base,
+                                        "Dias": dias_chamada,
+                                        "Faltas": total_faltas,
+                                        "Presenças": total_presencas,
+                                        "% Absenteísmo": f"{perc_abs:.2f}%"
+                                    })
+                            except: continue
                         
-                        st.subheader("Detalhamento")
+                        if resumo_lideres:
+                            st.table(pd.DataFrame(resumo_lideres))
+                        
+                        st.subheader("🔍 Histórico Detalhado")
                         st.dataframe(df_f, use_container_width=True)
                 else:
-                    st.info("Sem dados para o dashboard.")
+                    st.info("Sem registros no histórico.")
             except Exception as e:
-                st.error(f"Erro ao processar Dashboard: {e}")
+                st.error(f"Erro no Dashboard: {e}")
