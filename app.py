@@ -90,14 +90,14 @@ else:
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
+    # --- PERFIL LÍDER ---
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
         
-        # --- TELA DE SUCESSO ---
         if st.session_state.confirmacao_envio:
             st.success("### ✅ DADOS SALVOS COM SUCESSO!")
-            st.balloons()
-            if st.button("Atualizar registros / Nova Chamada"):
+            st.info("A planilha foi atualizada com a data e hora do envio.")
+            if st.button("Fazer Nova Chamada / Atualizar"):
                 st.session_state.confirmacao_envio = False
                 st.rerun()
             st.stop()
@@ -115,8 +115,10 @@ else:
         st.divider()
         is_extra = verificar_liberacao_especial()
         
+        # Carregamento da lista
         try:
-            df_lista = pd.read_csv(get_sheet_url(lider_nome))
+            url_lista = get_sheet_url(lider_nome)
+            df_lista = pd.read_csv(url_lista)
             
             with st.form("chamada_lider"):
                 st.subheader(f"Chamada - {lider_nome} " + ("(MODO HORA EXTRA)" if is_extra else "(NORMAL)"))
@@ -147,7 +149,7 @@ else:
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
                 if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    with st.spinner("Gravando no Banco de Dados..."):
+                    with st.spinner("Enviando para o Google Sheets..."):
                         resp = requests.post(URL_SCRIPT_GOOGLE, json={
                             "tipo": "presenca_completa", 
                             "lider": lider_nome, 
@@ -158,10 +160,11 @@ else:
                             st.session_state.confirmacao_envio = True
                             st.rerun()
                         else:
-                            st.error("Erro na comunicação com o servidor.")
-        except:
-            st.info("Sincronizando com a base de dados...")
+                            st.error("Erro ao conectar com o servidor.")
+        except Exception as e:
+            st.info("Aguardando carregamento da lista...")
 
+    # --- PERFIL ADMIN ---
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
 
@@ -197,7 +200,7 @@ else:
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
                     st.download_button("⬇️ Salvar Excel", out.getvalue(), "Historico.xlsx")
-                except: st.error("Erro ao gerar arquivo.")
+                except: st.error("Erro ao gerar histórico.")
 
             if st.button("🚀 Baixar HORA EXTRA Atual"):
                 try:
@@ -217,24 +220,11 @@ else:
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
-                    df_h.columns = ["Data", "Hora", "Matricula", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
-                    df_h['Data_DT'] = pd.to_datetime(df_h['Data'], format='%d/%m/%Y').dt.date
+                    # Ajuste de colunas conforme o seu Histórico real
+                    df_h['Data_DT'] = pd.to_datetime(df_h.iloc[:, 0], format='%d/%m/%Y').dt.date
                     c1, c2 = st.columns(2)
                     d_ini = c1.date_input("Início:", df_h['Data_DT'].min())
                     d_fim = c2.date_input("Fim:", date.today())
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
-                    if not df_f.empty:
-                        resumo = []
-                        for l in LIDERES:
-                            try:
-                                df_b = pd.read_csv(get_sheet_url(l))
-                                q = len(df_b[df_b.iloc[:, 0].notna()])
-                                hl = df_f[df_f['Lider'] == l]
-                                dias = hl['Data'].nunique()
-                                faltas = (hl['Status'] == 'FALTA').sum()
-                                if dias > 0:
-                                    absent = (faltas / (q * dias)) * 100
-                                    resumo.append({"Lider": l, "Base": q, "Faltas": faltas, "% Abs": round(absent, 2)})
-                            except: continue
-                        st.table(pd.DataFrame(resumo))
+                    st.write(f"Registros encontrados: {len(df_f)}")
             except: st.info("Sem dados para o dashboard.")
