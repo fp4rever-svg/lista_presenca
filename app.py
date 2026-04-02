@@ -87,68 +87,65 @@ else:
     # --- VISÃO DO LÍDER ---
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
-        is_extra = verificar_liberacao_especial()
         
+        # --- NOVO: SEÇÃO DE SOLICITAÇÃO DE INCLUSÃO ---
+        with st.expander("➕ Solicitar inclusão de novo colaborador"):
+            with st.form("form_novo_colab"):
+                nome_novo = st.text_input("Nome Completo:")
+                mat_nova = st.text_input("Matrícula (opcional):")
+                if st.form_submit_button("Enviar Solicitação"):
+                    if nome_novo:
+                        # Envia para a aba 'Pendentes' via Script
+                        requests.post(URL_SCRIPT_GOOGLE, json={
+                            "tipo": "solicitar_inclusao", 
+                            "lider": lider_nome, 
+                            "nome": nome_novo, 
+                            "matricula": mat_nova
+                        })
+                        st.success("Solicitação enviada ao Administrador!")
+                    else: st.warning("Digite o nome do colaborador.")
+
+        st.divider()
+
+        is_extra = verificar_liberacao_especial()
         try:
-            # Carrega a aba específica do líder
             df_lista = pd.read_csv(get_sheet_url(lider_nome))
             
             with st.form("chamada_lider"):
                 st.subheader(f"Chamada - {lider_nome}")
-                if is_extra: st.info("📢 MODO HORA EXTRA / FRETADO ATIVADO")
-                
                 dados_para_envio = []
-                # Ajuste de colunas visuais: Matrícula, Nome, [Ações], Obs
                 cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
                 
                 h = st.columns(cols)
-                h[0].write("**MAT**")
-                h[1].write("**NOME**")
+                h[0].write("**MAT**"); h[1].write("**NOME**")
                 if is_extra:
                     h[2].write("**HE**"); h[3].write("**FRT**"); h[4].write("**OBS**")
                 else:
                     h[2].write("**PRES**"); h[3].write("**OBS**")
 
                 for i, row in df_lista.iterrows():
-                    # NOVO MAPEAMENTO: Nome na Coluna A (index 0) e Matrícula na Coluna E (index 4)
                     if pd.isna(row.iloc[0]): continue 
-                    
-                    nome_colab = str(row.iloc[0])
-                    matricula = str(row.iloc[4])
+                    nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
                     
                     ln = st.columns(cols)
-                    ln[0].write(f"`{matricula}`")
-                    ln[1].write(nome_colab)
-                    
+                    ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
                     r_he, r_fr, r_pr = "Não", "Não", "FALTA"
 
                     if is_extra:
                         if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
-                        if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
+                        if ln[2].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
                         r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
-                        r_pr = "OK" # No modo extra, assumimos presença OK
+                        r_pr = "OK"
                     else:
                         if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
                         r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
                     
-                    dados_para_envio.append({
-                        "matricula": matricula, 
-                        "nome": nome_colab, 
-                        "status": r_pr, 
-                        "he": r_he, 
-                        "fretado": r_fr, 
-                        "obs": r_obs
-                    })
+                    dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
                 if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    res = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio})
-                    if res.status_code == 200:
-                        st.success("Check-in enviado com sucesso!")
-                    else:
-                        st.error("Erro ao enviar para o banco de dados.")
-                        
-        except Exception as e: 
-            st.error(f"Erro ao carregar lista de {lider_nome}. Verifique se a Matrícula está na Coluna E. Detalhe: {e}")
+                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio})
+                    st.success("Check-in enviado!")
+        except: st.error("Erro ao carregar lista.")
 
     # --- VISÃO DO ADMIN ---
     elif st.session_state.perfil == "Admin":
@@ -160,14 +157,13 @@ else:
             for l in LIDERES:
                 try:
                     d_ch = pd.read_csv(get_sheet_url(l))
-                    # Verifica na Coluna D (index 3) se a data de hoje está presente
                     if not d_ch.empty and d_ch.iloc[:, 3].astype(str).str.contains(hoje).any():
                         st.success(f"✅ {l}: Concluído")
                     else: st.error(f"❌ {l}: Pendente")
                 except: st.warning(f"⚠️ {l}: Sem conexão")
 
         with t2:
-            st.subheader("Novas Solicitações")
+            st.subheader("Novas Solicitações de Inclusão")
             try:
                 st.dataframe(pd.read_csv(get_sheet_url("Pendentes")), use_container_width=True)
             except: st.info("Sem solicitações pendentes.")
@@ -180,29 +176,54 @@ else:
                 st.rerun()
             
             st.divider()
-            if st.button("🔑 Ver Senhas"):
-                s = buscar_senhas_db()
-                if s: st.table(pd.DataFrame(list(s.items()), columns=['Líder', 'Senha']))
+            
+            # --- RESTAURADO: FERRAMENTA DE DOWNLOAD ---
+            st.write("### Exportar Dados")
+            if st.button("📥 Gerar Relatório Consolidado (Excel)"):
+                try:
+                    with st.spinner("Compilando dados..."):
+                        # Tenta baixar o histórico consolidado
+                        df_relatorio = pd.read_csv(get_sheet_url("Historico"))
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                            df_relatorio.to_excel(writer, index=False, sheet_name='Historico_Geral')
+                        st.download_button(
+                            label="⬇️ Clique para Baixar Excel",
+                            data=output.getvalue(),
+                            file_name=f"Relatorio_Logistica_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                except: st.error("Erro ao gerar arquivo. Verifique se a aba 'Historico' possui dados.")
 
             if st.button("🧹 Limpar Turno (Reset)"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
 
         with t4:
-            st.subheader("Análise de Dados (Histórico)")
+            st.subheader("Dashboard de Presença")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
+                    # Garante nomes de colunas conforme o Script enviou
                     df_h.columns = ["Data", "Hora", "Matricula", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
                     
-                    l_filt = st.multiselect("Filtrar Líder:", df_h['Lider'].unique(), default=df_h['Lider'].unique())
+                    # Filtros
+                    l_filt = st.multiselect("Líderes:", df_h['Lider'].unique(), default=df_h['Lider'].unique())
                     df_f = df_h[df_h['Lider'].isin(l_filt)]
                     
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Registros", len(df_f))
-                    m2.metric("Faltas", len(df_f[df_f['Status'] == 'FALTA']))
-                    m3.metric("% Presença", f"{(len(df_f[df_f['Status'] == 'OK'])/len(df_f)*100):.1f}%" if len(df_f)>0 else "0%")
+                    # Métricas Principais
+                    c1, c2, c3, c4 = st.columns(4)
+                    total = len(df_f)
+                    faltas = len(df_f[df_f['Status'] == 'FALTA'])
+                    c1.metric("Total de Registros", total)
+                    c2.metric("Total Faltas", faltas)
+                    c3.metric("% Presença", f"{((total-faltas)/total*100):.1f}%" if total > 0 else "0%")
+                    c4.metric("Total Horas Extra", len(df_f[df_f['HE'] == 'Sim']))
 
-                    st.dataframe(df_f, use_container_width=True)
+                    st.write("### Detalhes das Faltas")
+                    df_faltas = df_f[df_f['Status'] == 'FALTA'].groupby('Lider').size().reset_index(name='Qtd Faltas')
+                    st.bar_chart(df_faltas.set_index('Lider'))
+                    
+                    st.dataframe(df_f.sort_values(by="Data", ascending=False), use_container_width=True)
                 else: st.info("Histórico ainda vazio.")
-            except Exception as e: st.error(f"Erro ao carregar Dashboard. A aba 'Historico' será criada no primeiro envio.")
+            except Exception as e: st.error(f"Erro no Dashboard: {e}")
