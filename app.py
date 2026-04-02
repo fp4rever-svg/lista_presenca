@@ -200,61 +200,41 @@ else:
                 st.rerun()
 
         with t4:
-            st.subheader("📊 Dashboard de Performance e Absenteísmo")
+            st.subheader("📊 Dashboard de Performance (Baseado em Colaboradores)")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
-                    # Padronização de Colunas
                     df_h.columns = ["Data", "Hora", "Matricula", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
                     
-                    # Filtro de Data Global para o Dash
-                    datas_disponiveis = df_h['Data'].unique()
-                    data_sel = st.multiselect("Filtrar por Data:", datas_disponiveis, default=datas_disponiveis)
-                    df_f = df_h[df_h['Data'].isin(data_sel)]
-
-                    # --- VISÃO 1: POR LÍDER (Métricas de Gestão) ---
-                    st.markdown("### 👥 Visão por Líder")
+                    # 1. VISÃO POR LÍDER (Cálculo Corrigido)
+                    # Primeiro, calculamos o absenteísmo por DIA e LÍDER
+                    daily_metrics = df_h.groupby(['Data', 'Lider']).agg(
+                        Total_Colab=('Status', 'count'),
+                        Faltas=('Status', lambda x: (x == 'FALTA').sum())
+                    ).reset_index()
                     
-                    # Agrupamento por Líder
-                    dash_lider = df_f.groupby('Lider').agg(
-                        Total=('Status', 'count'),
+                    # Agora tiramos a média desses dias para o Líder não ter os números inflados
+                    dash_lider = daily_metrics.groupby('Lider').agg(
+                        Media_Colaboradores=('Total_Colab', 'mean'),
+                        Total_Faltas_Acumuladas=('Faltas', 'sum'),
+                        Dias_Registrados=('Data', 'count')
+                    ).reset_index()
+
+                    # Absenteísmo Real = (Soma de Faltas / (Média de Colaboradores * Dias))
+                    dash_lider['% Absenteísmo'] = (dash_lider['Total_Faltas_Acumuladas'] / (dash_lider['Media_Colaboradores'] * dash_lider['Dias_Registrados']) * 100).round(2)
+
+                    st.markdown("### 👥 Performance por Equipe")
+                    st.dataframe(dash_lider[['Lider', 'Media_Colaboradores', 'Total_Faltas_Acumuladas', '% Absenteísmo']], use_container_width=True)
+
+                    # 2. VISÃO POR COLABORADOR (Frequência)
+                    st.markdown("### 👤 Assiduidade Individual")
+                    dash_colab = df_h.groupby(['Matricula', 'Colaborador', 'Lider']).agg(
                         Presencas=('Status', lambda x: (x == 'OK').sum()),
                         Faltas=('Status', lambda x: (x == 'FALTA').sum())
                     ).reset_index()
                     
-                    # Cálculo de Absenteísmo por Líder
-                    dash_lider['% Absenteísmo'] = (dash_lider['Faltas'] / dash_lider['Total'] * 100).round(2)
-                    
-                    # Exibição em Colunas de Métricas (Top Líderes com mais faltas ou maior absenteísmo)
-                    col_l1, col_l2 = st.columns([2, 1])
-                    with col_l1:
-                        st.dataframe(dash_lider.sort_values('% Absenteísmo', ascending=False), use_container_width=True)
-                    with col_l2:
-                        st.bar_chart(dash_lider.set_index('Lider')['% Absenteísmo'])
-
-                    st.divider()
-
-                    # --- VISÃO 2: POR COLABORADOR (Frequência Individual) ---
-                    st.markdown("### 👤 Visão Geral de Colaboradores")
-                    
-                    search_colab = st.text_input("🔍 Pesquisar colaborador específico:")
-                    
-                    # Agrupamento por Colaborador
-                    dash_colab = df_f.groupby(['Matricula', 'Colaborador', 'Lider']).agg(
-                        Dias_Monitorados=('Status', 'count'),
-                        Total_Faltas=('Status', lambda x: (x == 'FALTA').sum()),
-                        Total_HE=('HE', lambda x: (x == 'Sim').sum())
-                    ).reset_index()
-                    
-                    # Filtro de busca
-                    if search_colab:
-                        dash_colab = dash_colab[dash_colab['Colaborador'].str.contains(search_colab, case=False)]
-
-                    # Ranking de quem mais falta (importante para o RH)
-                    st.write("Ranking de Absenteísmo Individual (Colaboradores com mais faltas):")
-                    st.dataframe(dash_colab.sort_values('Total_Faltas', ascending=False), use_container_width=True)
-
+                    st.dataframe(dash_colab.sort_values('Faltas', ascending=False), use_container_width=True)
                 else:
-                    st.info("Aguardando dados no histórico para gerar indicadores.")
+                    st.info("Histórico vazio.")
             except Exception as e:
-                st.error(f"Erro ao processar indicadores: {e}")
+                st.error(f"Erro no Dash: {e}")
