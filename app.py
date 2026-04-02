@@ -34,7 +34,7 @@ def verificar_liberacao_especial():
         return True if str(df.iloc[0, 1]).strip().upper() == "ON" else False
     except: return False
 
-# --- CONTROLE DE SESSÃO ---
+# --- INICIALIZAÇÃO DO SESSION STATE (EVITA ERRO DE ATRIBUTO) ---
 if 'logado' not in st.session_state:
     st.session_state.logado = False
 if 'usuario' not in st.session_state:
@@ -93,9 +93,10 @@ else:
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
         
+        # Se acabou de enviar, mostra SÓ o sucesso e para por aqui
         if st.session_state.msg_sucesso:
             st.success("✅ Relatório enviado com sucesso!")
-            if st.button("Fazer novo check-in"):
+            if st.button("Realizar Nova Chamada"):
                 st.session_state.msg_sucesso = False
                 st.rerun()
             st.stop()
@@ -114,7 +115,9 @@ else:
         is_extra = verificar_liberacao_especial()
         
         try:
+            # Tenta carregar a lista silenciosamente
             df_lista = pd.read_csv(get_sheet_url(lider_nome))
+            
             with st.form("chamada_lider"):
                 st.subheader(f"Chamada - {lider_nome} " + ("(MODO HORA EXTRA)" if is_extra else "(NORMAL)"))
                 dados_para_envio = []
@@ -144,7 +147,7 @@ else:
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
                 if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    with st.spinner("Enviando..."):
+                    with st.spinner("Enviando dados..."):
                         resp = requests.post(URL_SCRIPT_GOOGLE, json={
                             "tipo": "presenca_completa", 
                             "lider": lider_nome, 
@@ -154,8 +157,9 @@ else:
                         if resp.status_code == 200:
                             st.session_state.msg_sucesso = True
                             st.rerun()
-        except: 
-            st.info("Carregando lista...")
+        except:
+            # Se der erro real ou estiver carregando, mostra apenas um spinner discreto
+            st.spinner("Sincronizando com Google Sheets...")
 
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
