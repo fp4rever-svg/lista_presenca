@@ -1,5 +1,5 @@
 import streamlit as st
-import pd as pd
+import pandas as pd
 import requests
 from datetime import datetime, date
 import urllib.parse
@@ -139,16 +139,17 @@ else:
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
 
         with t1:
-            st.subheader("Envios de Hoje (Monitoramento por Aba do Líder)")
+            st.subheader("Envios de Hoje")
             for l in LIDERES:
                 try:
                     df_check = pd.read_csv(get_sheet_url(l))
+                    # Pega horário na coluna F (índice 5)
                     horarios = df_check.iloc[:, 5].dropna().astype(str)
                     horarios = horarios[horarios.str.strip() != ""]
                     if not horarios.empty:
                         st.success(f"✅ **{l}**: Concluído às {horarios.iloc[0]}")
                     else: st.error(f"❌ **{l}**: Pendente")
-                except: st.warning(f"⚠️ **{l}**: Erro de leitura.")
+                except: st.warning(f"⚠️ **{l}**: Erro ao ler aba.")
 
         with t2:
             st.subheader("Solicitações Pendentes")
@@ -168,7 +169,7 @@ else:
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
                     st.download_button("⬇️ Baixar", out.getvalue(), "Relatorio.xlsx")
-                except: st.error("Erro ao gerar.")
+                except: st.error("Erro ao gerar relatório.")
             if st.button("🧹 Limpar Turno (Reset)"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
@@ -180,25 +181,27 @@ else:
                 if not df_h.empty:
                     df_h.columns = ["Data", "Hora", "Matricula", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
                     df_h['Data_DT'] = pd.to_datetime(df_h['Data'], format='%d/%m/%Y').dt.date
+                    
                     c1, c2 = st.columns(2)
                     d_ini = c1.date_input("Início:", df_h['Data_DT'].min())
                     d_fim = c2.date_input("Fim:", date.today())
+                    
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
 
                     if not df_f.empty:
                         resumo_lideres = []
                         for l in LIDERES:
                             try:
-                                # Pega a quantidade REAL de colaboradores na aba do líder
+                                # Lê a aba do líder para contar os colaboradores REAIS (coluna B)
                                 df_base = pd.read_csv(get_sheet_url(l))
-                                qtd_real_colab = len(df_base.dropna(subset=[df_base.columns[0]]))
+                                # Conta linhas onde a coluna de Nome não está vazia
+                                qtd_real_colab = len(df_base[df_base.iloc[:, 0].notna()])
                                 
-                                # Filtra histórico do período para este líder
                                 hist_lider = df_f[df_f['Lider'] == l]
                                 dias_enviados = hist_lider['Data'].nunique()
                                 total_faltas = (hist_lider['Status'] == 'FALTA').sum()
                                 
-                                if dias_enviados > 0:
+                                if dias_enviados > 0 and qtd_real_colab > 0:
                                     absent = (total_faltas / (qtd_real_colab * dias_enviados)) * 100
                                     resumo_lideres.append({
                                         "Lider": l,
@@ -210,10 +213,14 @@ else:
                             except: continue
                         
                         st.write("### Resumo por Equipe")
-                        st.dataframe(pd.DataFrame(resumo_lideres), use_container_width=True)
+                        if resumo_lideres:
+                            st.dataframe(pd.DataFrame(resumo_lideres), use_container_width=True)
                         
                         st.write("### Frequência Individual")
-                        dash_c = df_f.groupby(['Matricula', 'Colaborador', 'Lider']).agg(Pres=('Status', lambda x: (x == 'OK').sum()), Faltas=('Status', lambda x: (x == 'FALTA').sum())).reset_index()
+                        dash_c = df_f.groupby(['Matricula', 'Colaborador', 'Lider']).agg(
+                            Pres=('Status', lambda x: (x == 'OK').sum()), 
+                            Faltas=('Status', lambda x: (x == 'FALTA').sum())
+                        ).reset_index()
                         st.dataframe(dash_c.sort_values('Faltas', ascending=False), use_container_width=True)
-                else: st.info("Sem dados.")
-            except Exception as e: st.error(f"Erro: {e}")
+                else: st.info("Sem dados no histórico.")
+            except Exception as e: st.error(f"Erro no Dash: {e}")
