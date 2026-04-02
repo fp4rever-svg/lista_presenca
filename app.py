@@ -36,7 +36,13 @@ def verificar_liberacao_especial():
 
 # --- CONTROLE DE SESSÃO ---
 if 'logado' not in st.session_state:
-    st.session_state.update({'logado': False, 'usuario': None, 'perfil': None, 'enviado_com_sucesso': False})
+    st.session_state.logado = False
+if 'usuario' not in st.session_state:
+    st.session_state.usuario = None
+if 'perfil' not in st.session_state:
+    st.session_state.perfil = None
+if 'msg_sucesso' not in st.session_state:
+    st.session_state.msg_sucesso = False
 
 # ==========================================
 # ÁREA DE ACESSO (LOGIN)
@@ -81,18 +87,18 @@ else:
     c1, c2 = st.columns([5, 1])
     c1.write(f"Sessão: **{st.session_state.usuario}**")
     if c2.button("Sair/Logoff"):
-        st.session_state.update({'logado': False, 'usuario': None, 'perfil': None})
+        for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
 
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
         
-        # Bloqueia a visualização se já enviou para evitar o erro vermelho no recarregamento
-        if st.session_state.enviado_com_sucesso:
-            st.success("✅ Relatório enviado com sucesso! Aguarde o redirecionamento...")
-            time.sleep(2)
-            st.session_state.enviado_com_sucesso = False
-            st.rerun()
+        if st.session_state.msg_sucesso:
+            st.success("✅ Relatório enviado com sucesso!")
+            if st.button("Fazer novo check-in"):
+                st.session_state.msg_sucesso = False
+                st.rerun()
+            st.stop()
 
         with st.expander("➕ Solicitar inclusão de novo colaborador"):
             with st.form("form_novo_colab", clear_on_submit=True):
@@ -146,11 +152,10 @@ else:
                             "is_extra": is_extra 
                         })
                         if resp.status_code == 200:
-                            st.session_state.enviado_com_sucesso = True
+                            st.session_state.msg_sucesso = True
                             st.rerun()
         except: 
-            if not st.session_state.enviado_com_sucesso:
-                st.error("Erro ao carregar lista de presença.")
+            st.info("Carregando lista...")
 
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
@@ -176,25 +181,25 @@ else:
             st.subheader("Controle de Operação")
             lib_status = verificar_liberacao_especial()
             st.info(f"O modo atual é: **{'HORA EXTRA/FRETADO' if lib_status else 'ESCALA NORMAL'}**")
-            if st.button("切换 OPERAÇÃO: " + ("IR PARA ESCALA NORMAL" if lib_status else "ATIVAR HORA EXTRA")):
+            if st.button("ALTERAR OPERAÇÃO"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF" if lib_status else "ON"})
                 st.rerun()
             
             st.divider()
-            if st.button("📥 Baixar Histórico Geral (Excel)"):
+            if st.button("📥 Baixar Histórico Geral"):
                 try:
                     df_rel = pd.read_csv(get_sheet_url("Historico"))
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
-                    st.download_button("⬇️ Salvar Histórico", out.getvalue(), "Historico_Geral.xlsx")
+                    st.download_button("⬇️ Salvar", out.getvalue(), "Historico.xlsx")
                 except: st.error("Erro ao gerar.")
 
-            if st.button("🚀 Baixar HORA EXTRA do Momento"):
+            if st.button("🚀 Baixar HORA EXTRA Atual"):
                 try:
                     df_he = pd.read_csv(get_sheet_url("HORA EXTRA"))
                     out_he = io.BytesIO()
                     with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
-                    st.download_button("⬇️ Salvar Lista Extra", out_he.getvalue(), "Transporte_HE.xlsx")
+                    st.download_button("⬇️ Salvar", out_he.getvalue(), "Transporte_HE.xlsx")
                 except: st.error("Aba HORA EXTRA vazia.")
 
             st.divider()
@@ -203,7 +208,7 @@ else:
                 st.rerun()
 
         with t4:
-            st.subheader("📊 Dashboard (Escala Normal)")
+            st.subheader("📊 Dashboard")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
@@ -214,18 +219,17 @@ else:
                     d_fim = c2.date_input("Fim:", date.today())
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
                     if not df_f.empty:
-                        resumo_lideres = []
+                        resumo = []
                         for l in LIDERES:
                             try:
-                                df_base = pd.read_csv(get_sheet_url(l))
-                                qtd_real = len(df_base[df_base.iloc[:, 0].notna()])
-                                hist_l = df_f[df_f['Lider'] == l]
-                                dias = hist_l['Data'].nunique()
-                                faltas = (hist_l['Status'] == 'FALTA').sum()
+                                df_b = pd.read_csv(get_sheet_url(l))
+                                q = len(df_b[df_b.iloc[:, 0].notna()])
+                                hl = df_f[df_f['Lider'] == l]
+                                dias = hl['Data'].nunique()
+                                faltas = (hl['Status'] == 'FALTA').sum()
                                 if dias > 0:
-                                    absent = (faltas / (qtd_real * dias)) * 100
-                                    resumo_lideres.append({"Lider": l, "Base": qtd_real, "Dias": dias, "Faltas": faltas, "% Abs": round(absent, 2)})
+                                    absent = (faltas / (q * dias)) * 100
+                                    resumo.append({"Lider": l, "Base": q, "Faltas": faltas, "% Abs": round(absent, 2)})
                             except: continue
-                        st.dataframe(pd.DataFrame(resumo_lideres), use_container_width=True)
-                else: st.info("Sem dados no histórico.")
-            except Exception as e: st.error(f"Erro: {e}")
+                        st.table(pd.DataFrame(resumo))
+            except: st.info("Sem dados para o dash.")
