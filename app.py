@@ -112,15 +112,17 @@ else:
         with t1:
             st.subheader("Envios de Hoje")
             hoje = datetime.now().strftime("%d/%m")
+            
             for l in LIDERES:
                 try:
-                    # Lê a aba do líder e verifica a COLUNA 4 (Índice 3 - Data)
                     d_ch = pd.read_csv(get_sheet_url(l))
-                    # .iloc[:, 3] garante que estamos olhando para a coluna da DATA
-                    if d_ch.iloc[:, 3].astype(str).str.contains(hoje).any():
+                    # Verificamos se o "dia/mês" existe na 4ª coluna (Índice 3 - Coluna D)
+                    if not d_ch.empty and d_ch.iloc[:, 3].astype(str).str.contains(hoje).any():
                         st.success(f"✅ {l}: Concluído")
-                    else: st.error(f"❌ {l}: Pendente")
-                except: st.warning(f"⚠️ {l}: Sem dados")
+                    else:
+                        st.error(f"❌ {l}: Pendente")
+                except:
+                    st.warning(f"⚠️ {l}: Erro na leitura")
 
         with t2:
             try: st.dataframe(pd.read_csv(get_sheet_url("Pendentes")), use_container_width=True)
@@ -136,25 +138,28 @@ else:
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
-                    # FORÇANDO NOMES DE COLUNAS PARA EVITAR ERRO DE POSIÇÃO
-                    # Baseado no seu Code.gs: ["Data", "Hora", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
+                    # Forçamos os nomes das colunas conforme a ordem do seu Histórico
                     df_h.columns = ["Data", "Hora", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
 
+                    # Sidebar de filtros ou colunas
                     l_sel = st.multiselect("Filtrar Líder:", df_h['Lider'].unique(), default=df_h['Lider'].unique())
                     df_f = df_h[df_h['Lider'].isin(l_sel)]
 
                     m1, m2, m3 = st.columns(3)
-                    faltas = len(df_f[df_f['Status'] == 'FALTA'])
-                    m1.metric("Registros", len(df_f))
-                    m2.metric("Faltas", faltas)
-                    m3.metric("% Absenteísmo", f"{(faltas/len(df_f))*100:.1f}%" if len(df_f)>0 else "0%")
+                    total_f = len(df_f[df_f['Status'] == 'FALTA'])
+                    m1.metric("Total Registros", len(df_f))
+                    m2.metric("Total Faltas", total_f)
+                    m3.metric("Absenteísmo", f"{(total_f/len(df_f))*100:.1f}%" if len(df_f)>0 else "0%")
 
                     st.write("### Faltas por Líder")
-                    graf = df_f[df_f['Status'] == 'FALTA'].groupby('Lider').size().reset_index(name='Total')
-                    st.bar_chart(graf.set_index('Lider'))
+                    # Agrupamos pelo nome do Lider para o gráfico
+                    df_graf = df_f[df_f['Status'] == 'FALTA'].groupby('Lider').size().reset_index(name='Faltas')
+                    st.bar_chart(df_graf.set_index('Lider'))
 
-                    st.write("### Ranking de Horas Extras")
-                    he = df_f[df_f['HE'] == 'Sim'].groupby('Colaborador').size().reset_index(name='Qtd').sort_values('Qtd', ascending=False)
-                    st.table(he.head(10))
-                else: st.info("Histórico vazio.")
-            except Exception as e: st.error(f"Erro no histórico: {e}")
+                    st.write("### Detalhes de H.E.")
+                    df_he = df_f[df_f['HE'] == 'Sim'].groupby('Colaborador').size().reset_index(name='Qtd').sort_values('Qtd', ascending=False)
+                    st.dataframe(df_he, use_container_width=True)
+                else:
+                    st.info("Histórico ainda sem dados.")
+            except Exception as e:
+                st.error(f"Erro ao processar dashboard: {e}")
