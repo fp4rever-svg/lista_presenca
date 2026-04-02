@@ -154,23 +154,34 @@ else:
 
         with t1:
             st.subheader("Envios de Hoje")
-            # Pegamos o dia e o mês atual (ex: 01/04)
+            # Pega a data de hoje no formato dia/mês (ex: 01/04)
             hoje = datetime.now().strftime("%d/%m")
             
             for l in LIDERES:
                 try:
-                    # Busca os dados da aba do líder
                     url_lider = get_sheet_url(l)
                     d_ch = pd.read_csv(url_lider)
                     
-                    # Verificamos se a coluna de data (índice 3) existe e tem o dia de hoje
-                    # Usamos .astype(str) para garantir que não dê erro com células vazias
-                    if d_ch.iloc[:, 3].astype(str).str.contains(hoje).any():
+                    # Se a planilha estiver vazia ou não tiver colunas suficientes
+                    if d_ch.empty:
+                        st.error(f"❌ {l}: Planilha Vazia")
+                        continue
+
+                    # TESTE DINÂMICO: Procura o 'hoje' em todas as colunas de texto
+                    # Isso evita erro se você moveu a coluna de data de lugar
+                    encontrou_envio = False
+                    for col in d_ch.columns:
+                        if d_ch[col].astype(str).str.contains(hoje).any():
+                            encontrou_envio = True
+                            break
+                    
+                    if encontrou_envio:
                         st.success(f"✅ {l}: Concluído")
                     else:
                         st.error(f"❌ {l}: Pendente")
+                        
                 except Exception as e:
-                    st.warning(f"⚠️ {l}: Sem conexão ou aba vazia")
+                    st.warning(f"⚠️ {l}: Erro na leitura")
 
         with t2:
             st.subheader("Novos Colaboradores Solicitados")
