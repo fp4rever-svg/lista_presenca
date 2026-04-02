@@ -85,7 +85,7 @@ if not st.session_state.logado:
 # ==========================================
 else:
     c1, c2 = st.columns([5, 1])
-    c1.write(f"Sessão: **{st.session_state.usuario}**")
+    c1.write(f"Usuário: **{st.session_state.usuario}**")
     if c2.button("Sair/Logoff"):
         for key in list(st.session_state.keys()): del st.session_state[key]
         st.rerun()
@@ -93,14 +93,14 @@ else:
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
         
-        # --- TELA DE SUCESSO APÓS ENVIAR ---
+        # --- TELA DE SUCESSO ---
         if st.session_state.confirmacao_envio:
-            st.success("### ✅ Dados salvos com sucesso!")
-            st.info("As informações já foram enviadas para a planilha oficial.")
-            if st.button("Fazer novo Check-in / Voltar"):
+            st.success("### ✅ DADOS SALVOS COM SUCESSO!")
+            st.balloons()
+            if st.button("Atualizar registros / Nova Chamada"):
                 st.session_state.confirmacao_envio = False
                 st.rerun()
-            st.stop() # Interrompe o restante do código para não mostrar a lista de novo
+            st.stop()
 
         with st.expander("➕ Solicitar inclusão de novo colaborador"):
             with st.form("form_novo_colab", clear_on_submit=True):
@@ -147,7 +147,7 @@ else:
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
                 if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    with st.spinner("Gravando dados..."):
+                    with st.spinner("Gravando no Banco de Dados..."):
                         resp = requests.post(URL_SCRIPT_GOOGLE, json={
                             "tipo": "presenca_completa", 
                             "lider": lider_nome, 
@@ -158,10 +158,9 @@ else:
                             st.session_state.confirmacao_envio = True
                             st.rerun()
                         else:
-                            st.error("Erro ao salvar. Verifique sua conexão.")
+                            st.error("Erro na comunicação com o servidor.")
         except:
-            # Silencia a mensagem de erro durante o carregamento inicial
-            pass
+            st.info("Sincronizando com a base de dados...")
 
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
@@ -186,7 +185,7 @@ else:
         with t3:
             st.subheader("Controle de Operação")
             lib_status = verificar_liberacao_especial()
-            st.info(f"Modo atual: **{'HORA EXTRA' if lib_status else 'ESCALA NORMAL'}**")
+            st.info(f"Modo atual: **{'HORA EXTRA/FRETADO' if lib_status else 'ESCALA NORMAL'}**")
             if st.button("ALTERAR OPERAÇÃO"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF" if lib_status else "ON"})
                 st.rerun()
@@ -197,15 +196,15 @@ else:
                     df_rel = pd.read_csv(get_sheet_url("Historico"))
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
-                    st.download_button("⬇️ Salvar", out.getvalue(), "Historico.xlsx")
-                except: st.error("Erro ao gerar.")
+                    st.download_button("⬇️ Salvar Excel", out.getvalue(), "Historico.xlsx")
+                except: st.error("Erro ao gerar arquivo.")
 
             if st.button("🚀 Baixar HORA EXTRA Atual"):
                 try:
                     df_he = pd.read_csv(get_sheet_url("HORA EXTRA"))
                     out_he = io.BytesIO()
                     with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
-                    st.download_button("⬇️ Salvar", out_he.getvalue(), "Transporte_HE.xlsx")
+                    st.download_button("⬇️ Salvar Excel HE", out_he.getvalue(), "Transporte_HE.xlsx")
                 except: st.error("Aba HORA EXTRA vazia.")
 
             st.divider()
@@ -238,4 +237,4 @@ else:
                                     resumo.append({"Lider": l, "Base": q, "Faltas": faltas, "% Abs": round(absent, 2)})
                             except: continue
                         st.table(pd.DataFrame(resumo))
-            except: st.info("Sem dados para o dash.")
+            except: st.info("Sem dados para o dashboard.")
