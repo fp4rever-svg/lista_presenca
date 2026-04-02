@@ -157,7 +157,8 @@ else:
 
     # --- VISÃO DO ADMIN ---
     elif st.session_state.perfil == "Admin":
-        t1, t2, t3 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas"])
+        # No app.py, adicione a t4 na lista de tabs
+    t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard Mensal"])
 
         with t1:
             st.subheader("Envios de Hoje")
@@ -212,3 +213,41 @@ else:
             if st.button("🧹 Limpar Turno (Reset)"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
+
+    with t4:
+        st.subheader("Análise de Presença e Produtividade")
+        try:
+            # Lendo a nova aba de histórico
+            url_hist = get_sheet_url("Historico")
+            df_h = pd.read_csv(url_hist)
+            
+            if not df_h.empty:
+                # Filtros Rápidos
+                col_f1, col_f2 = st.columns(2)
+                lider_f = col_f1.multiselect("Filtrar Líder:", df_h['Lider'].unique(), default=df_h['Lider'].unique())
+                df_f = df_h[df_h['Lider'].isin(lider_f)]
+
+                # KPIs
+                m1, m2, m3 = st.columns(3)
+                total = len(df_f)
+                presencas = len(df_f[df_f['Status'] == 'OK'])
+                faltas = len(df_f[df_f['Status'] == 'FALTA'])
+                
+                m1.metric("Total de Registros", total)
+                m2.metric("Presenças ✅", presencas)
+                m3.metric("Faltas ❌", faltas, delta=f"{(faltas/total)*100:.1f}% Absenteísmo" if total > 0 else "0%", delta_color="inverse")
+
+                # Gráfico de Barras: Faltas por Dia
+                st.write("### Faltas por Líder no Período")
+                df_grafico = df_f[df_f['Status'] == 'FALTA'].groupby('Lider').size().reset_index(name='Total Faltas')
+                st.bar_chart(df_grafico.set_index('Lider'))
+
+                # Tabela de H.E.
+                st.write("### Colaboradores com mais H.E.")
+                he_count = df_f[df_f['HE'] == 'Sim'].groupby('Colaborador').size().reset_index(name='Qtd HE').sort_values(by='Qtd HE', ascending=False)
+                st.dataframe(he_count, use_container_width=True)
+
+            else:
+                st.info("O histórico ainda está vazio. Comece a realizar check-ins para gerar dados.")
+        except:
+            st.warning("Aba 'Historico' não encontrada ou sem dados suficientes.")
