@@ -36,7 +36,7 @@ def verificar_liberacao_especial():
 
 # --- CONTROLE DE SESSÃO ---
 if 'logado' not in st.session_state:
-    st.session_state.update({'logado': False, 'usuario': None, 'perfil': None})
+    st.session_state.update({'logado': False, 'usuario': None, 'perfil': None, 'enviado_com_sucesso': False})
 
 # ==========================================
 # ÁREA DE ACESSO (LOGIN)
@@ -81,11 +81,19 @@ else:
     c1, c2 = st.columns([5, 1])
     c1.write(f"Sessão: **{st.session_state.usuario}**")
     if c2.button("Sair/Logoff"):
-        st.session_state.logado = False
+        st.session_state.update({'logado': False, 'usuario': None, 'perfil': None})
         st.rerun()
 
     if st.session_state.perfil == "Lider":
         lider_nome = st.session_state.usuario
+        
+        # Bloqueia a visualização se já enviou para evitar o erro vermelho no recarregamento
+        if st.session_state.enviado_com_sucesso:
+            st.success("✅ Relatório enviado com sucesso! Aguarde o redirecionamento...")
+            time.sleep(2)
+            st.session_state.enviado_com_sucesso = False
+            st.rerun()
+
         with st.expander("➕ Solicitar inclusão de novo colaborador"):
             with st.form("form_novo_colab", clear_on_submit=True):
                 nome_novo = st.text_input("Nome Completo:")
@@ -101,50 +109,48 @@ else:
         
         try:
             df_lista = pd.read_csv(get_sheet_url(lider_nome))
-            if df_lista.empty:
-                st.info("Lista de colaboradores vazia.")
-            else:
-                with st.form("chamada_lider"):
-                    st.subheader(f"Chamada - {lider_nome}")
-                    dados_para_envio = []
-                    cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
+            with st.form("chamada_lider"):
+                st.subheader(f"Chamada - {lider_nome} " + ("(MODO HORA EXTRA)" if is_extra else "(NORMAL)"))
+                dados_para_envio = []
+                cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
+                
+                h = st.columns(cols)
+                h[0].write("**MAT**"); h[1].write("**NOME**")
+                if is_extra: h[2].write("**HE**"); h[3].write("**FRT**"); h[4].write("**OBS**")
+                else: h[2].write("**PRES**"); h[3].write("**OBS**")
+
+                for i, row in df_lista.iterrows():
+                    if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
+                    nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
+                    ln = st.columns(cols)
+                    ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
+                    r_he, r_fr, r_pr = "Não", "Não", "FALTA"
+
+                    if is_extra:
+                        if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
+                        if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
+                        r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
+                        r_pr = "OK"
+                    else:
+                        if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
+                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
                     
-                    h = st.columns(cols)
-                    h[0].write("**MAT**"); h[1].write("**NOME**")
-                    if is_extra: h[2].write("**HE**"); h[3].write("**FRT**"); h[4].write("**OBS**")
-                    else: h[2].write("**PRES**"); h[3].write("**OBS**")
+                    dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
-                    for i, row in df_lista.iterrows():
-                        if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
-                        nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
-                        ln = st.columns(cols)
-                        ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
-                        r_he, r_fr, r_pr = "Não", "Não", "FALTA"
-
-                        if is_extra:
-                            if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
-                            if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
-                            r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
-                            r_pr = "OK"
-                        else:
-                            if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
-                            r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
-                        
-                        dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
-
-                    if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                        with st.spinner("Gravando dados..."):
-                            resp = requests.post(URL_SCRIPT_GOOGLE, json={
-                                "tipo": "presenca_completa", 
-                                "lider": lider_nome, 
-                                "lista": dados_para_envio,
-                                "is_extra": is_extra 
-                            })
-                            if resp.status_code == 200:
-                                st.success("Check-in enviado!")
-                                time.sleep(2)
-                                st.rerun()
-        except: st.error("Erro ao carregar lista.")
+                if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
+                    with st.spinner("Enviando..."):
+                        resp = requests.post(URL_SCRIPT_GOOGLE, json={
+                            "tipo": "presenca_completa", 
+                            "lider": lider_nome, 
+                            "lista": dados_para_envio,
+                            "is_extra": is_extra 
+                        })
+                        if resp.status_code == 200:
+                            st.session_state.enviado_com_sucesso = True
+                            st.rerun()
+        except: 
+            if not st.session_state.enviado_com_sucesso:
+                st.error("Erro ao carregar lista de presença.")
 
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
@@ -159,7 +165,7 @@ else:
                     if not horarios.empty:
                         st.success(f"✅ **{l}**: Concluído às {horarios.iloc[0]}")
                     else: st.error(f"❌ **{l}**: Pendente")
-                except: st.warning(f"⚠️ **{l}**: Erro na leitura.")
+                except: st.warning(f"⚠️ **{l}**: Sem dados.")
 
         with t2:
             st.subheader("Solicitações Pendentes")
@@ -167,31 +173,29 @@ else:
             except: st.info("Sem solicitações.")
 
         with t3:
-            st.subheader("Ferramentas de Gestão")
+            st.subheader("Controle de Operação")
             lib_status = verificar_liberacao_especial()
-            if st.button("🔴 DESATIVAR H.E./FRETADO" if lib_status else "🟢 ATIVAR H.E./FRETADO"):
+            st.info(f"O modo atual é: **{'HORA EXTRA/FRETADO' if lib_status else 'ESCALA NORMAL'}**")
+            if st.button("切换 OPERAÇÃO: " + ("IR PARA ESCALA NORMAL" if lib_status else "ATIVAR HORA EXTRA")):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF" if lib_status else "ON"})
                 st.rerun()
             
             st.divider()
-            
-            if st.button("📥 Gerar Relatório Histórico Geral"):
+            if st.button("📥 Baixar Histórico Geral (Excel)"):
                 try:
                     df_rel = pd.read_csv(get_sheet_url("Historico"))
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
-                    st.download_button("⬇️ Baixar Histórico", out.getvalue(), "Historico_Geral.xlsx")
-                except: st.error("Erro ao gerar histórico.")
+                    st.download_button("⬇️ Salvar Histórico", out.getvalue(), "Historico_Geral.xlsx")
+                except: st.error("Erro ao gerar.")
 
-            if st.button("🚀 Extrair Relatório HORA EXTRA / FRETADO (Atual)"):
+            if st.button("🚀 Baixar HORA EXTRA do Momento"):
                 try:
                     df_he = pd.read_csv(get_sheet_url("HORA EXTRA"))
-                    if not df_he.empty:
-                        out_he = io.BytesIO()
-                        with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
-                        st.download_button("⬇️ Baixar Lista Extra", out_he.getvalue(), "Hora_Extra_Transporte.xlsx")
-                    else: st.warning("A aba HORA EXTRA está vazia.")
-                except: st.error("Aba 'HORA EXTRA' não encontrada.")
+                    out_he = io.BytesIO()
+                    with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
+                    st.download_button("⬇️ Salvar Lista Extra", out_he.getvalue(), "Transporte_HE.xlsx")
+                except: st.error("Aba HORA EXTRA vazia.")
 
             st.divider()
             if st.button("🧹 Limpar Turno (Reset)"):
@@ -199,44 +203,29 @@ else:
                 st.rerun()
 
         with t4:
-            st.subheader("📊 Dashboard de Performance")
+            st.subheader("📊 Dashboard (Escala Normal)")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
                     df_h.columns = ["Data", "Hora", "Matricula", "Colaborador", "Lider", "Status", "HE", "Fretado", "Obs"]
                     df_h['Data_DT'] = pd.to_datetime(df_h['Data'], format='%d/%m/%Y').dt.date
-                    
                     c1, c2 = st.columns(2)
                     d_ini = c1.date_input("Início:", df_h['Data_DT'].min())
                     d_fim = c2.date_input("Fim:", date.today())
-                    
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
-
                     if not df_f.empty:
                         resumo_lideres = []
                         for l in LIDERES:
                             try:
                                 df_base = pd.read_csv(get_sheet_url(l))
-                                qtd_real_colab = len(df_base[df_base.iloc[:, 0].notna()])
-                                hist_lider = df_f[df_f['Lider'] == l]
-                                dias_enviados = hist_lider['Data'].nunique()
-                                total_faltas = (hist_lider['Status'] == 'FALTA').sum()
-                                
-                                if dias_enviados > 0 and qtd_real_colab > 0:
-                                    absent = (total_faltas / (qtd_real_colab * dias_enviados)) * 100
-                                    resumo_lideres.append({
-                                        "Lider": l,
-                                        "Qtd Colab (Base)": qtd_real_colab,
-                                        "Dias Enviados": dias_enviados,
-                                        "Total Faltas": total_faltas,
-                                        "% Absenteísmo": round(absent, 2)
-                                    })
+                                qtd_real = len(df_base[df_base.iloc[:, 0].notna()])
+                                hist_l = df_f[df_f['Lider'] == l]
+                                dias = hist_l['Data'].nunique()
+                                faltas = (hist_l['Status'] == 'FALTA').sum()
+                                if dias > 0:
+                                    absent = (faltas / (qtd_real * dias)) * 100
+                                    resumo_lideres.append({"Lider": l, "Base": qtd_real, "Dias": dias, "Faltas": faltas, "% Abs": round(absent, 2)})
                             except: continue
-                        
-                        st.write("### Resumo por Equipe")
-                        if resumo_lideres: st.dataframe(pd.DataFrame(resumo_lideres), use_container_width=True)
-                        
-                        st.write("### Frequência Individual")
-                        dash_c = df_f.groupby(['Matricula', 'Colaborador', 'Lider']).agg(Pres=('Status', lambda x: (x == 'OK').sum()), Faltas=('Status', lambda x: (x == 'FALTA').sum())).reset_index()
-                        st.dataframe(dash_c.sort_values('Faltas', ascending=False), use_container_width=True)
-            except Exception as e: st.error(f"Erro no Dash: {e}")
+                        st.dataframe(pd.DataFrame(resumo_lideres), use_container_width=True)
+                else: st.info("Sem dados no histórico.")
+            except Exception as e: st.error(f"Erro: {e}")
