@@ -84,53 +84,52 @@ else:
         st.rerun()
 
     # --- VISÃO DO LÍDER ---
-    if st.session_state.perfil == "Lider":
-        lider_nome = st.session_state.usuario
-        is_extra = verificar_liberacao_especial()
+    # --- PARTE DO CÓDIGO DO LÍDER ---
+if st.session_state.perfil == "Lider":
+    lider_nome = st.session_state.usuario
+    is_extra = verificar_liberacao_especial()
+    
+    try:
+        # Busca a lista da aba com o nome do Líder
+        df_lista = pd.read_csv(get_sheet_url(lider_nome))
+        df_lista.rename(columns={df_lista.columns[0]: 'Colaborador'}, inplace=True)
+
+        # 1. FORMULÁRIO DE CHAMADA
+        with st.form("chamada_lider"):
+            st.subheader(f"📋 Chamada - {lider_nome}")
+            dados_para_envio = []
+            cols = [3, 1, 1, 3] if is_extra else [3, 1, 3]
+            
+            # ... (lógica de repetição dos colaboradores aqui) ...
+            # [Mantenha o loop 'for i, row in df_lista.iterrows()' que você já tem]
+
+            if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
+                requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio})
+                st.success("Check-in enviado com sucesso!")
+
+        # 2. ÁREA DE SOLICITAÇÃO (ISOLADA DO FORMULÁRIO ACIMA)
+        st.markdown("---") # Linha divisória visual
+        st.subheader("🚀 Gestão de Equipe")
         
-        try:
-            df_lista = pd.read_csv(get_sheet_url(lider_nome))
-            df_lista.rename(columns={df_lista.columns[0]: 'Colaborador'}, inplace=True)
-
-            with st.form("chamada_lider"):
-                st.subheader(f"Chamada - {lider_nome}")
-                dados_para_envio = []
-                cols = [3, 1, 1, 3] if is_extra else [3, 1, 3]
+        with st.expander("➕ SOLICITAR INCLUSÃO DE NOVO COLABORADOR", expanded=False):
+            st.write("Preencha os dados abaixo para enviar ao Administrador:")
+            with st.form("form_solicitacao_novo"):
+                n_nome = st.text_input("Nome Completo do Colaborador:")
+                n_setor = st.selectbox("Setor de Alocação:", ["Recebimento", "Separação", "Expedição", "Outros"])
                 
-                for i, row in df_lista.iterrows():
-                    if pd.isna(row['Colaborador']): continue
-                    ln = st.columns(cols)
-                    ln[0].write(row['Colaborador'])
-                    r_he, r_fr, r_pr = "Não", "Não", "FALTA"
-
-                    if is_extra:
-                        if ln[1].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
-                        if ln[2].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
-                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
-                        r_pr = "OK"
+                enviar_sol = st.form_submit_button("Enviar Solicitação")
+                
+                if enviar_sol:
+                    if n_nome:
+                        # Chama o script para gravar na aba 'Pendentes'
+                        payload = {"tipo": "solicitar_inclusao", "nome": n_nome, "lider": lider_nome, "area": n_setor}
+                        requests.post(URL_SCRIPT_GOOGLE, json=payload)
+                        st.success(f"Solicitação de {n_nome} enviada para a aba Pendentes!")
                     else:
-                        if ln[1].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
-                        r_obs = ln[2].text_input("", key=f"ob_{i}", label_visibility="collapsed")
-                    
-                    dados_para_envio.append({"nome": row['Colaborador'], "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
+                        st.error("Por favor, preencha o nome do colaborador.")
 
-                if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio})
-                    st.success("Enviado com sucesso!")
-
-            # --- FUNCIONALIDADE: SOLICITAR INCLUSÃO ---
-            st.divider()
-            with st.expander("➕ Solicitar Novo Colaborador"):
-                with st.form("solicitacao"):
-                    n_nome = st.text_input("Nome Completo:")
-                    n_setor = st.selectbox("Setor:", ["Recebimento", "Separação", "Expedição", "Outros"])
-                    if st.form_submit_button("Enviar para Admin"):
-                        if n_nome:
-                            requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "solicitar_inclusao", "nome": n_nome, "lider": lider_nome, "area": n_setor})
-                            st.success("Solicitação enviada!")
-                        else: st.warning("Digite o nome.")
-
-        except: st.error("Erro ao carregar lista.")
+    except Exception as e:
+        st.error(f"Erro ao carregar lista de {lider_nome}. Verifique a aba no Sheets.")
 
     # --- VISÃO DO ADMIN ---
     elif st.session_state.perfil == "Admin":
