@@ -12,7 +12,7 @@ st.set_page_config(page_title="Check-in Logística | Grupo SC", layout="wide", p
 # --- CONFIGURAÇÕES ---
 SHEET_ID = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbwLDpdSgnGTPwciE-25mUel8Zm46zovwoi9o_AnQrkkKUIOfRK6EuPH3YVD0M0TrBJY2Q/exec"
-LIDERES = ["Carol", "Elisangela", "Lais Alves", "Leticia", "Renato", "Thiago"]
+LIDERES = ["Carol", "Elisangela", "Lais Alves", "Leticia", "Renato", "Tiago"]
 SENHA_ADMIN = "1234"
 
 # --- FUNÇÕES DE SUPORTE ---
