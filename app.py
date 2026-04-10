@@ -132,6 +132,15 @@ else:
 
                 for i, row in df_lista.iterrows():
                     if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
+                    
+                    # --- NOVA REGRA: FÉRIAS/AFASTAMENTO ---
+                    # Verifica se a Coluna J (índice 9) existe e se tem algo escrito nela
+                    if len(row) > 9 and pd.notna(row.iloc[9]):
+                        status_afastamento = str(row.iloc[9]).strip()
+                        if status_afastamento != "" and status_afastamento.lower() != "nan":
+                            continue # Pula este colaborador (fica invisível na chamada)
+                    # --------------------------------------
+
                     nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
                     ln = st.columns(cols)
                     ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
@@ -234,8 +243,15 @@ else:
                         resumo_lideres = []
                         for l in LIDERES:
                             try:
-                                # Pega a base total do líder para saber o denominador
+                                # Pega a base total do líder
                                 df_base = pd.read_csv(get_sheet_url(l))
+                                
+                                # --- NOVA REGRA: Remover Férias/Afastados do cálculo base ---
+                                if len(df_base.columns) > 9:
+                                    # Mantém na base apenas quem está com a Coluna J (índice 9) vazia
+                                    df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "") | (df_base.iloc[:, 9].astype(str).str.lower() == "nan")]
+                                # -----------------------------------------------------------
+                                
                                 total_colab_base = len(df_base[df_base.iloc[:, 0].notna()])
                                 
                                 # Filtra histórico desse líder
@@ -245,7 +261,7 @@ else:
                                 total_presencas = len(dados_lider[dados_lider.iloc[:, 5] == "OK"])
                                 
                                 if dias_chamada > 0 and total_colab_base > 0:
-                                    # Cálculo: Faltas / (Total Colaboradores * Dias de Chamada)
+                                    # Cálculo: Faltas / (Total Colaboradores Ativos * Dias de Chamada)
                                     perc_abs = (total_faltas / (total_colab_base * dias_chamada)) * 100
                                     resumo_lideres.append({
                                         "Líder": l,
