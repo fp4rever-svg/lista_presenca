@@ -9,20 +9,19 @@ import io
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Check-in Logística | Grupo SC", layout="wide", page_icon="📋")
 
-# --- CSS PARA CORREÇÃO MOBILE (ESSENCIAL PARA NÃO DESCONFIGURAR) ---
+# --- CSS PARA AJUSTE MOBILE E COLUNAS ---
 st.markdown("""
     <style>
-    /* Impede que as colunas empilhem no celular em telas pequenas */
+    /* Mantém colunas lado a lado no mobile */
     [data-testid="column"] {
         display: flex;
         flex-direction: column;
         justify-content: center;
     }
-    /* Estilização para inputs e checkboxes ficarem alinhados */
-    .stCheckbox { margin-bottom: 0px; }
-    .stTextInput { margin-top: -10px; }
-    /* Reduz padding excessivo no mobile */
+    /* Diminui o espaçamento interno para caber mais coisa */
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    /* Ajusta altura dos inputs para não quebrar layout */
+    .stTextInput input { height: 35px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -118,115 +117,117 @@ else:
                 st.rerun()
             st.stop()
 
-        with st.expander("➕ Solicitar novo colaborador"):
+        with st.expander("➕ Solicitar inclusão de novo colaborador"):
             with st.form("form_novo_colab", clear_on_submit=True):
                 nome_novo = st.text_input("Nome Completo:")
                 area_nova = st.text_input("Área/Matrícula:")
                 if st.form_submit_button("Enviar Solicitação"):
                     if nome_novo:
                         requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "solicitar_inclusao", "lider": lider_nome, "nome": nome_novo, "matricula": area_nova})
-                        st.success("Enviado!")
+                        st.success("Solicitação enviada!")
+                    else: st.warning("Digite o nome.")
 
         st.divider()
         is_extra = verificar_liberacao_especial()
         
         try:
-            df_lista = pd.read_csv(get_sheet_url(lider_nome))
+            url_lista = get_sheet_url(lider_nome)
+            df_lista = pd.read_csv(url_lista)
             
             with st.form("chamada_lider"):
                 st.subheader(f"Chamada - {lider_nome} " + ("(EXTRA)" if is_extra else "(NORMAL)"))
                 dados_para_envio = []
                 
-                # Cabeçalho para Mobile
-                if not is_extra:
-                    h = st.columns([1.5, 4, 1.2]) 
-                    h[0].write("**MAT**"); h[1].write("**NOME**"); h[2].write("**OK**")
-                else:
-                    st.info("📱 Gire o celular para modo horizontal em Hora Extra.")
-
+                # Ajuste de proporção das colunas para Mobile
+                # NORMAL: Mat(1), Nome(3), Pres(1), Obs(2)
+                # EXTRA: Mat(1), Nome(2), HE(1), FRT(1), Obs(2)
+                cols_layout = [1, 2, 0.8, 0.8, 1.5] if is_extra else [1, 3, 0.8, 1.8]
+                
                 for i, row in df_lista.iterrows():
                     if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
                     
-                    # REGRA DE FÉRIAS (Coluna J / Índice 9)
                     if len(row) > 9 and pd.notna(row.iloc[9]):
-                        if str(row.iloc[9]).strip() != "" and str(row.iloc[9]).lower() != "nan":
+                        status_afastamento = str(row.iloc[9]).strip()
+                        if status_afastamento != "" and status_afastamento.lower() != "nan":
                             continue
 
                     nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
+                    ln = st.columns(cols_layout)
                     
-                    if not is_extra:
-                        ln = st.columns([1.5, 4, 1.2]) # Colunas fixas para Mobile
-                        ln[0].write(f"`{matricula}`")
-                        # Abreviar nome para não empurrar o checkbox
-                        nome_curto = (nome_colab[:16] + '..') if len(nome_colab) > 18 else nome_colab
-                        ln[1].write(nome_curto)
-                        r_pr = "OK" if ln[2].checkbox("", key=f"pr_{i}", label_visibility="collapsed") else "FALTA"
-                        r_obs = st.text_input("Obs:", key=f"ob_{i}", placeholder="Justificativa...", label_visibility="collapsed")
-                        r_he, r_fr = "Não", "Não"
-                    else:
-                        st.markdown(f"**{nome_colab}** ({matricula})")
-                        le = st.columns(3)
-                        r_he = "Sim" if le[0].checkbox("⚡ HE", key=f"he_{i}") else "Não"
-                        r_fr = "Sim" if le[1].checkbox("🚌 FR", key=f"fr_{i}") else "Não"
-                        r_obs = st.text_input("Obs", key=f"ob_{i}", label_visibility="collapsed")
+                    ln[0].write(f"`{matricula}`")
+                    # Corta o nome se for muito longo para o mobile
+                    nome_exibido = (nome_colab[:15] + '..') if len(nome_colab) > 17 else nome_colab
+                    ln[1].write(nome_exibido)
+                    
+                    r_he, r_fr, r_pr = "Não", "Não", "FALTA"
+
+                    if is_extra:
+                        if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
+                        if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
+                        # Limite de 20 caracteres na Obs
+                        r_obs = ln[4].text_input("", key=f"ob_{i}", max_chars=20, placeholder="Obs...", label_visibility="collapsed")
                         r_pr = "OK"
+                    else:
+                        if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
+                        # Limite de 20 caracteres na Obs
+                        r_obs = ln[3].text_input("", key=f"ob_{i}", max_chars=20, placeholder="Obs...", label_visibility="collapsed")
                     
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
-                if st.form_submit_button("✅ FINALIZAR"):
-                    with st.spinner("Gravando..."):
-                        resp = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio, "is_extra": is_extra})
-                        if resp.status_code == 200:
-                            st.session_state.confirmacao_envio = True
-                            st.rerun()
-        except: st.info("Carregando lista...")
+                if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
+                    requests.post(URL_SCRIPT_GOOGLE, json={
+                        "tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio, "is_extra": is_extra 
+                    })
+                    st.session_state.confirmacao_envio = True
+                    st.rerun()
+        except: st.info("Aguardando carregamento...")
 
     # --- PERFIL ADMIN ---
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
 
         with t1:
-            st.subheader("Status de Hoje")
+            st.subheader("Envios de Hoje")
             for l in LIDERES:
                 try:
                     df_check = pd.read_csv(get_sheet_url(l))
-                    h = df_check.iloc[:, 5].dropna().astype(str)
-                    h = h[h.str.strip() != ""]
-                    if not h.empty: st.success(f"✅ **{l}**: {h.iloc[0]}")
+                    horarios = df_check.iloc[:, 5].dropna().astype(str)
+                    horarios = horarios[horarios.str.strip() != ""]
+                    if not horarios.empty: st.success(f"✅ **{l}**: {horarios.iloc[0]}")
                     else: st.error(f"❌ **{l}**: Pendente")
-                except: st.warning(f"⚠️ **{l}**: Erro")
+                except: st.warning(f"⚠️ **{l}**: Sem dados.")
 
         with t2:
             try: st.dataframe(pd.read_csv(get_sheet_url("Pendentes")), use_container_width=True)
-            except: st.info("Sem pendências.")
+            except: st.info("Sem solicitações.")
 
         with t3:
-            st.subheader("Controle")
+            st.subheader("Controle de Operação")
             lib_status = verificar_liberacao_especial()
-            st.write(f"Modo: **{'HORA EXTRA' if lib_status else 'ESCALA NORMAL'}**")
-            if st.button("ALTERAR MODO DE OPERAÇÃO"):
+            st.info(f"Modo atual: **{'HORA EXTRA/FRETADO' if lib_status else 'ESCALA NORMAL'}**")
+            if st.button("ALTERAR OPERAÇÃO"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF" if lib_status else "ON"})
                 st.rerun()
             
             st.divider()
-            if st.button("📥 Baixar Histórico Geral (Excel)"):
+            if st.button("📥 Baixar Histórico Geral"):
                 df_rel = pd.read_csv(get_sheet_url("Historico"))
                 out = io.BytesIO()
                 with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
-                st.download_button("⬇️ Salvar Arquivo", out.getvalue(), "Historico.xlsx")
+                st.download_button("⬇️ Salvar Excel", out.getvalue(), "Historico.xlsx")
 
-            if st.button("🚀 Baixar Fretado/HE"):
+            if st.button("🚀 Baixar HORA EXTRA Atual"):
                 df_he = pd.read_csv(get_sheet_url("HORA EXTRA"))
                 out_he = io.BytesIO()
                 with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
-                st.download_button("⬇️ Salvar HE", out_he.getvalue(), "Transporte.xlsx")
+                st.download_button("⬇️ Salvar Excel HE", out_he.getvalue(), "Transporte_HE.xlsx")
 
-            if st.button("🧹 Resetar Turno (Limpar Tudo)"):
+            if st.button("🧹 Limpar Turno (Reset)"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
 
         with t4:
-            st.subheader("📊 Performance")
+            st.subheader("📊 Dashboard de Performance")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
@@ -237,22 +238,24 @@ else:
                     d_fim = c2.date_input("Fim:", date.today())
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
                     
-                    resumo = []
+                    resumo_lideres = []
                     for l in LIDERES:
-                        df_base = pd.read_csv(get_sheet_url(l))
-                        # Remove afastados da base de cálculo
-                        if len(df_base.columns) > 9:
-                            df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "")]
-                        
-                        total_base = len(df_base[df_base.iloc[:, 0].notna()])
-                        dl = df_f[df_f.iloc[:, 4] == l]
-                        dias = dl.iloc[:, 0].nunique()
-                        faltas = len(dl[dl.iloc[:, 5] == "FALTA"])
-                        
-                        if dias > 0 and total_base > 0:
-                            perc = (faltas / (total_base * dias)) * 100
-                            resumo.append({"Líder": l, "Base": total_base, "Dias": dias, "Faltas": faltas, "% Abs": f"{perc:.2f}%"})
+                        try:
+                            df_base = pd.read_csv(get_sheet_url(l))
+                            if len(df_base.columns) > 9:
+                                df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "")]
+                            
+                            total_colab_base = len(df_base[df_base.iloc[:, 0].notna()])
+                            dados_lider = df_f[df_f.iloc[:, 4] == l]
+                            dias_chamada = dados_lider.iloc[:, 0].nunique()
+                            total_faltas = len(dados_lider[dados_lider.iloc[:, 5] == "FALTA"])
+                            
+                            if dias_chamada > 0 and total_colab_base > 0:
+                                perc_abs = (total_faltas / (total_colab_base * dias_chamada)) * 100
+                                resumo_lideres.append({"Líder": l, "Base": total_colab_base, "Dias": dias_chamada, "Faltas": total_faltas, "% Abs": f"{perc_abs:.2f}%"})
+                        except: continue
                     
-                    if resumo: st.table(pd.DataFrame(resumo))
+                    if resumo_lideres: st.table(pd.DataFrame(resumo_lideres))
+                    st.subheader("🔍 Detalhado")
                     st.dataframe(df_f, use_container_width=True)
-            except: st.error("Erro ao gerar gráficos.")
+            except: st.info("Sem registros para o período.")
