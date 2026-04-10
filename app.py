@@ -9,18 +9,20 @@ import io
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Check-in Logística | Grupo SC", layout="wide", page_icon="📋")
 
-# --- CSS PARA CORREÇÃO MOBILE ---
+# --- CSS PARA CORREÇÃO MOBILE (ESSENCIAL PARA NÃO DESCONFIGURAR) ---
 st.markdown("""
     <style>
-    /* Força as colunas a manterem o alinhamento horizontal no mobile */
+    /* Impede que as colunas empilhem no celular em telas pequenas */
     [data-testid="column"] {
         display: flex;
         flex-direction: column;
         justify-content: center;
     }
-    /* Diminui o espaçamento entre elementos para caber mais coisa */
+    /* Estilização para inputs e checkboxes ficarem alinhados */
     .stCheckbox { margin-bottom: 0px; }
     .stTextInput { margin-top: -10px; }
+    /* Reduz padding excessivo no mobile */
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -111,121 +113,117 @@ else:
         
         if st.session_state.confirmacao_envio:
             st.success("### ✅ DADOS SALVOS COM SUCESSO!")
-            st.info("A planilha foi atualizada com a data e hora do envio.")
             if st.button("Fazer Nova Chamada / Atualizar"):
                 st.session_state.confirmacao_envio = False
                 st.rerun()
             st.stop()
 
-        with st.expander("➕ Solicitar inclusão de novo colaborador"):
+        with st.expander("➕ Solicitar novo colaborador"):
             with st.form("form_novo_colab", clear_on_submit=True):
                 nome_novo = st.text_input("Nome Completo:")
                 area_nova = st.text_input("Área/Matrícula:")
                 if st.form_submit_button("Enviar Solicitação"):
                     if nome_novo:
                         requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "solicitar_inclusao", "lider": lider_nome, "nome": nome_novo, "matricula": area_nova})
-                        st.success("Solicitação enviada!")
-                    else: st.warning("Digite o nome.")
+                        st.success("Enviado!")
 
         st.divider()
         is_extra = verificar_liberacao_especial()
         
         try:
-            url_lista = get_sheet_url(lider_nome)
-            df_lista = pd.read_csv(url_lista)
+            df_lista = pd.read_csv(get_sheet_url(lider_nome))
             
             with st.form("chamada_lider"):
-                st.subheader(f"Chamada - {lider_nome} " + ("(MODO HORA EXTRA)" if is_extra else "(NORMAL)"))
+                st.subheader(f"Chamada - {lider_nome} " + ("(EXTRA)" if is_extra else "(NORMAL)"))
                 dados_para_envio = []
                 
-                # Cabeçalho Fixo para Mobile (Apenas Escala Normal)
+                # Cabeçalho para Mobile
                 if not is_extra:
                     h = st.columns([1.5, 4, 1.2]) 
                     h[0].write("**MAT**"); h[1].write("**NOME**"); h[2].write("**OK**")
                 else:
-                    st.info("📱 Use o celular deitado (horizontal) para melhor visualização em Hora Extra.")
+                    st.info("📱 Gire o celular para modo horizontal em Hora Extra.")
 
                 for i, row in df_lista.iterrows():
                     if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
                     
-                    # REGRA DE FÉRIAS (Pula se Coluna J tiver algo)
+                    # REGRA DE FÉRIAS (Coluna J / Índice 9)
                     if len(row) > 9 and pd.notna(row.iloc[9]):
-                        if str(row.iloc[9]).strip() != "": continue
+                        if str(row.iloc[9]).strip() != "" and str(row.iloc[9]).lower() != "nan":
+                            continue
 
-                    nome_colab = str(row.iloc[0])
-                    matricula = str(row.iloc[4])
+                    nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
                     
                     if not is_extra:
-                        # Layout Escala Normal: MAT | NOME (Abreviado) | CHECKBOX
-                        ln = st.columns([1.5, 4, 1.2])
+                        ln = st.columns([1.5, 4, 1.2]) # Colunas fixas para Mobile
                         ln[0].write(f"`{matricula}`")
-                        
-                        # Abreviação para não quebrar a linha no celular
+                        # Abreviar nome para não empurrar o checkbox
                         nome_curto = (nome_colab[:16] + '..') if len(nome_colab) > 18 else nome_colab
                         ln[1].write(nome_curto)
-                        
-                        # Checkbox sem label para economizar espaço
                         r_pr = "OK" if ln[2].checkbox("", key=f"pr_{i}", label_visibility="collapsed") else "FALTA"
-                        
-                        # Campo de OBS logo abaixo da linha para não apertar as colunas
-                        r_obs = st.text_input("Obs:", key=f"ob_{i}", placeholder="Justificativa se falta...", label_visibility="collapsed")
+                        r_obs = st.text_input("Obs:", key=f"ob_{i}", placeholder="Justificativa...", label_visibility="collapsed")
                         r_he, r_fr = "Não", "Não"
                     else:
-                        # Layout Hora Extra
                         st.markdown(f"**{nome_colab}** ({matricula})")
                         le = st.columns(3)
                         r_he = "Sim" if le[0].checkbox("⚡ HE", key=f"he_{i}") else "Não"
                         r_fr = "Sim" if le[1].checkbox("🚌 FR", key=f"fr_{i}") else "Não"
-                        r_pr = "OK"
                         r_obs = st.text_input("Obs", key=f"ob_{i}", label_visibility="collapsed")
+                        r_pr = "OK"
                     
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
-                if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    with st.spinner("Enviando..."):
-                        resp = requests.post(URL_SCRIPT_GOOGLE, json={
-                            "tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio, "is_extra": is_extra 
-                        })
+                if st.form_submit_button("✅ FINALIZAR"):
+                    with st.spinner("Gravando..."):
+                        resp = requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio, "is_extra": is_extra})
                         if resp.status_code == 200:
                             st.session_state.confirmacao_envio = True
                             st.rerun()
-                        else: st.error("Erro ao conectar.")
-        except:
-            st.info("Aguardando lista...")
+        except: st.info("Carregando lista...")
 
     # --- PERFIL ADMIN ---
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
 
         with t1:
-            st.subheader("Envios de Hoje")
+            st.subheader("Status de Hoje")
             for l in LIDERES:
                 try:
                     df_check = pd.read_csv(get_sheet_url(l))
-                    horarios = df_check.iloc[:, 5].dropna().astype(str)
-                    horarios = horarios[horarios.str.strip() != ""]
-                    if not horarios.empty: st.success(f"✅ **{l}**: {horarios.iloc[0]}")
+                    h = df_check.iloc[:, 5].dropna().astype(str)
+                    h = h[h.str.strip() != ""]
+                    if not h.empty: st.success(f"✅ **{l}**: {h.iloc[0]}")
                     else: st.error(f"❌ **{l}**: Pendente")
-                except: st.warning(f"⚠️ **{l}**: Sem dados.")
+                except: st.warning(f"⚠️ **{l}**: Erro")
 
         with t2:
-            st.subheader("Solicitações")
             try: st.dataframe(pd.read_csv(get_sheet_url("Pendentes")), use_container_width=True)
-            except: st.info("Sem solicitações.")
+            except: st.info("Sem pendências.")
 
         with t3:
-            st.subheader("Ferramentas")
+            st.subheader("Controle")
             lib_status = verificar_liberacao_especial()
-            if st.button(f"MUDAR PARA {'ESCALA NORMAL' if lib_status else 'HORA EXTRA'}"):
+            st.write(f"Modo: **{'HORA EXTRA' if lib_status else 'ESCALA NORMAL'}**")
+            if st.button("ALTERAR MODO DE OPERAÇÃO"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF" if lib_status else "ON"})
                 st.rerun()
             
             st.divider()
-            if st.button("📥 Baixar Histórico"):
+            if st.button("📥 Baixar Histórico Geral (Excel)"):
                 df_rel = pd.read_csv(get_sheet_url("Historico"))
                 out = io.BytesIO()
                 with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
-                st.download_button("⬇️ Salvar Excel", out.getvalue(), "Historico.xlsx")
+                st.download_button("⬇️ Salvar Arquivo", out.getvalue(), "Historico.xlsx")
+
+            if st.button("🚀 Baixar Fretado/HE"):
+                df_he = pd.read_csv(get_sheet_url("HORA EXTRA"))
+                out_he = io.BytesIO()
+                with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
+                st.download_button("⬇️ Salvar HE", out_he.getvalue(), "Transporte.xlsx")
+
+            if st.button("🧹 Resetar Turno (Limpar Tudo)"):
+                requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
+                st.rerun()
 
         with t4:
             st.subheader("📊 Performance")
@@ -234,14 +232,15 @@ else:
                 if not df_h.empty:
                     df_h['Data_DT'] = pd.to_datetime(df_h.iloc[:, 0], dayfirst=True, errors='coerce').dt.date
                     df_h = df_h.dropna(subset=['Data_DT'])
-                    d_ini = st.date_input("Início:", df_h['Data_DT'].min())
-                    d_fim = st.date_input("Fim:", date.today())
+                    c1, c2 = st.columns(2)
+                    d_ini = c1.date_input("Início:", df_h['Data_DT'].min())
+                    d_fim = c2.date_input("Fim:", date.today())
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
                     
                     resumo = []
                     for l in LIDERES:
                         df_base = pd.read_csv(get_sheet_url(l))
-                        # Desconta férias da base do dashboard
+                        # Remove afastados da base de cálculo
                         if len(df_base.columns) > 9:
                             df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "")]
                         
@@ -255,4 +254,5 @@ else:
                             resumo.append({"Líder": l, "Base": total_base, "Dias": dias, "Faltas": faltas, "% Abs": f"{perc:.2f}%"})
                     
                     if resumo: st.table(pd.DataFrame(resumo))
-            except: st.error("Erro no dashboard.")
+                    st.dataframe(df_f, use_container_width=True)
+            except: st.error("Erro ao gerar gráficos.")
