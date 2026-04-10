@@ -142,20 +142,21 @@ else:
                     nome_curto = formatar_nome_curto(nome_completo)
                     matricula = str(row.iloc[4])
                     
-                    col_nome, col_check = st.columns([3, 1])
-                    col_nome.write(f"**{nome_curto}** `{matricula}`")
-                    
                     r_he, r_fr, r_pr = "Não", "Não", "FALTA"
+                    
+                    # Usando o nome diretamente como texto do checkbox. 
+                    # Impede a quebra de linha (stacking) no celular e força o [ ] a ficar sempre na frente.
                     if is_extra:
-                        with col_check:
-                            if st.checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
-                            if st.checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
-                            r_pr = "OK"
+                        if st.checkbox(f"⚡ HE - **{nome_curto}** `{matricula}`", key=f"he_{i}"): r_he = "Sim"
+                        if st.checkbox(f"🚌 Fretado", key=f"fr_{i}"): r_fr = "Sim"
+                        r_pr = "OK"
                     else:
-                        if col_check.checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
+                        if st.checkbox(f"**{nome_curto}** `{matricula}`", key=f"pr_{i}"): r_pr = "OK"
 
+                    # Campo de observação travado logo abaixo
                     r_obs = st.text_input("Obs:", key=f"ob_{i}", label_visibility="collapsed", placeholder="Observação...")
                     st.markdown("---")
+                    
                     dados_para_envio.append({"matricula": matricula, "nome": nome_completo, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
                 if st.form_submit_button("✅ FINALIZAR E ENVIAR", use_container_width=True):
@@ -165,7 +166,7 @@ else:
         except: st.info("Carregando...")
 
     # ==========================================
-    # PERFIL ADMIN (RESTAURADO)
+    # PERFIL ADMIN (RESTAURADO E INTACTO)
     # ==========================================
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
