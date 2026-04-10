@@ -9,19 +9,12 @@ import io
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Check-in Logística | Grupo SC", layout="wide", page_icon="📋")
 
-# --- CSS PARA AJUSTE MOBILE E COLUNAS ---
+# Custom CSS para melhorar o visual mobile e reduzir espaçamentos
 st.markdown("""
     <style>
-    /* Mantém colunas lado a lado no mobile */
-    [data-testid="column"] {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-    }
-    /* Diminui o espaçamento interno para caber mais coisa */
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
-    /* Ajusta altura dos inputs para não quebrar layout */
-    .stTextInput input { height: 35px; }
+    [data-testid="stCheckbox"] { margin-bottom: -15px; }
+    .stTextInput { margin-top: -10px; }
+    hr { margin: 10px 0px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -50,15 +43,15 @@ def verificar_liberacao_especial():
         return True if str(df.iloc[0, 1]).strip().upper() == "ON" else False
     except: return False
 
+def formatar_nome_curto(nome):
+    partes = str(nome).split()
+    return " ".join(partes[:2]) if len(partes) > 1 else nome
+
 # --- INICIALIZAÇÃO DO SESSION STATE ---
-if 'logado' not in st.session_state:
-    st.session_state.logado = False
-if 'usuario' not in st.session_state:
-    st.session_state.usuario = None
-if 'perfil' not in st.session_state:
-    st.session_state.perfil = None
-if 'confirmacao_envio' not in st.session_state:
-    st.session_state.confirmacao_envio = False
+if 'logado' not in st.session_state: st.session_state.logado = False
+if 'usuario' not in st.session_state: st.session_state.usuario = None
+if 'perfil' not in st.session_state: st.session_state.perfil = None
+if 'confirmacao_envio' not in st.session_state: st.session_state.confirmacao_envio = False
 
 # ==========================================
 # ÁREA DE ACESSO (LOGIN)
@@ -96,9 +89,6 @@ if not st.session_state.logado:
                 st.rerun()
             else: st.error("Acesso Negado.")
 
-# ==========================================
-# SISTEMA PÓS-LOGIN
-# ==========================================
 else:
     c1, c2 = st.columns([5, 1])
     c1.write(f"Usuário: **{st.session_state.usuario}**")
@@ -117,16 +107,6 @@ else:
                 st.rerun()
             st.stop()
 
-        with st.expander("➕ Solicitar inclusão de novo colaborador"):
-            with st.form("form_novo_colab", clear_on_submit=True):
-                nome_novo = st.text_input("Nome Completo:")
-                area_nova = st.text_input("Área/Matrícula:")
-                if st.form_submit_button("Enviar Solicitação"):
-                    if nome_novo:
-                        requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "solicitar_inclusao", "lider": lider_nome, "nome": nome_novo, "matricula": area_nova})
-                        st.success("Solicitação enviada!")
-                    else: st.warning("Digite o nome.")
-
         st.divider()
         is_extra = verificar_liberacao_especial()
         
@@ -137,50 +117,52 @@ else:
             with st.form("chamada_lider"):
                 st.subheader(f"Chamada - {lider_nome} " + ("(EXTRA)" if is_extra else "(NORMAL)"))
                 dados_para_envio = []
-                
-                # Ajuste de proporção das colunas para Mobile
-                # NORMAL: Mat(1), Nome(3), Pres(1), Obs(2)
-                # EXTRA: Mat(1), Nome(2), HE(1), FRT(1), Obs(2)
-                cols_layout = [1, 2, 0.8, 0.8, 1.5] if is_extra else [1, 3, 0.8, 1.8]
-                
+
                 for i, row in df_lista.iterrows():
                     if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
                     
+                    # Filtro Afastamento (Coluna J)
                     if len(row) > 9 and pd.notna(row.iloc[9]):
-                        status_afastamento = str(row.iloc[9]).strip()
-                        if status_afastamento != "" and status_afastamento.lower() != "nan":
+                        if str(row.iloc[9]).strip() != "" and str(row.iloc[9]).lower() != "nan":
                             continue
 
-                    nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
-                    ln = st.columns(cols_layout)
+                    nome_completo = str(row.iloc[0])
+                    nome_curto = formatar_nome_curto(nome_completo)
+                    matricula = str(row.iloc[4])
                     
-                    ln[0].write(f"`{matricula}`")
-                    # Corta o nome se for muito longo para o mobile
-                    nome_exibido = (nome_colab[:15] + '..') if len(nome_colab) > 17 else nome_colab
-                    ln[1].write(nome_exibido)
+                    # Layout Mobile: Nome e Checkbox na mesma linha
+                    col_nome, col_check = st.columns([3, 1])
+                    col_nome.write(f"**{nome_curto}** `{matricula}`")
                     
                     r_he, r_fr, r_pr = "Não", "Não", "FALTA"
 
                     if is_extra:
-                        if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
-                        if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
-                        # Limite de 20 caracteres na Obs
-                        r_obs = ln[4].text_input("", key=f"ob_{i}", max_chars=20, placeholder="Obs...", label_visibility="collapsed")
-                        r_pr = "OK"
+                        with col_check:
+                            if st.checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
+                            if st.checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
+                            r_pr = "OK"
                     else:
-                        if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
-                        # Limite de 20 caracteres na Obs
-                        r_obs = ln[3].text_input("", key=f"ob_{i}", max_chars=20, placeholder="Obs...", label_visibility="collapsed")
-                    
-                    dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
+                        if col_check.checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
 
-                if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
-                    requests.post(URL_SCRIPT_GOOGLE, json={
-                        "tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio, "is_extra": is_extra 
-                    })
-                    st.session_state.confirmacao_envio = True
-                    st.rerun()
-        except: st.info("Aguardando carregamento...")
+                    # Observação logo abaixo
+                    r_obs = st.text_input("Obs:", key=f"ob_{i}", label_visibility="collapsed", placeholder="Observação...")
+                    st.markdown("---")
+                    
+                    dados_para_envio.append({"matricula": matricula, "nome": nome_completo, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
+
+                if st.form_submit_button("✅ FINALIZAR E ENVIAR", use_container_width=True):
+                    with st.spinner("Enviando..."):
+                        resp = requests.post(URL_SCRIPT_GOOGLE, json={
+                            "tipo": "presenca_completa", 
+                            "lider": lider_nome, 
+                            "lista": dados_para_envio,
+                            "is_extra": is_extra 
+                        })
+                        if resp.status_code == 200:
+                            st.session_state.confirmacao_envio = True
+                            st.rerun()
+                        else: st.error("Erro ao salvar.")
+        except: st.info("Carregando lista...")
 
     # --- PERFIL ADMIN ---
     elif st.session_state.perfil == "Admin":
@@ -197,65 +179,27 @@ else:
                     else: st.error(f"❌ **{l}**: Pendente")
                 except: st.warning(f"⚠️ **{l}**: Sem dados.")
 
-        with t2:
-            try: st.dataframe(pd.read_csv(get_sheet_url("Pendentes")), use_container_width=True)
-            except: st.info("Sem solicitações.")
-
         with t3:
-            st.subheader("Controle de Operação")
             lib_status = verificar_liberacao_especial()
-            st.info(f"Modo atual: **{'HORA EXTRA/FRETADO' if lib_status else 'ESCALA NORMAL'}**")
-            if st.button("ALTERAR OPERAÇÃO"):
+            if st.button(f"MUDAR PARA {'NORMAL' if lib_status else 'HORA EXTRA'}"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "toggle_especial", "status": "OFF" if lib_status else "ON"})
-                st.rerun()
-            
-            st.divider()
-            if st.button("📥 Baixar Histórico Geral"):
-                df_rel = pd.read_csv(get_sheet_url("Historico"))
-                out = io.BytesIO()
-                with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
-                st.download_button("⬇️ Salvar Excel", out.getvalue(), "Historico.xlsx")
-
-            if st.button("🚀 Baixar HORA EXTRA Atual"):
-                df_he = pd.read_csv(get_sheet_url("HORA EXTRA"))
-                out_he = io.BytesIO()
-                with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
-                st.download_button("⬇️ Salvar Excel HE", out_he.getvalue(), "Transporte_HE.xlsx")
-
-            if st.button("🧹 Limpar Turno (Reset)"):
-                requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
 
         with t4:
-            st.subheader("📊 Dashboard de Performance")
+            st.subheader("📊 Dashboard")
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
-                    df_h['Data_DT'] = pd.to_datetime(df_h.iloc[:, 0], dayfirst=True, errors='coerce').dt.date
+                    # CORREÇÃO: Tratamento robusto para a coluna de data (geralmente a primeira)
+                    coluna_data = df_h.columns[0]
+                    df_h['Data_DT'] = pd.to_datetime(df_h[coluna_data], dayfirst=True, errors='coerce').dt.date
                     df_h = df_h.dropna(subset=['Data_DT'])
+                    
                     c1, c2 = st.columns(2)
                     d_ini = c1.date_input("Início:", df_h['Data_DT'].min())
                     d_fim = c2.date_input("Fim:", date.today())
+                    
                     df_f = df_h[(df_h['Data_DT'] >= d_ini) & (df_h['Data_DT'] <= d_fim)]
-                    
-                    resumo_lideres = []
-                    for l in LIDERES:
-                        try:
-                            df_base = pd.read_csv(get_sheet_url(l))
-                            if len(df_base.columns) > 9:
-                                df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "")]
-                            
-                            total_colab_base = len(df_base[df_base.iloc[:, 0].notna()])
-                            dados_lider = df_f[df_f.iloc[:, 4] == l]
-                            dias_chamada = dados_lider.iloc[:, 0].nunique()
-                            total_faltas = len(dados_lider[dados_lider.iloc[:, 5] == "FALTA"])
-                            
-                            if dias_chamada > 0 and total_colab_base > 0:
-                                perc_abs = (total_faltas / (total_colab_base * dias_chamada)) * 100
-                                resumo_lideres.append({"Líder": l, "Base": total_colab_base, "Dias": dias_chamada, "Faltas": total_faltas, "% Abs": f"{perc_abs:.2f}%"})
-                        except: continue
-                    
-                    if resumo_lideres: st.table(pd.DataFrame(resumo_lideres))
-                    st.subheader("🔍 Detalhado")
                     st.dataframe(df_f, use_container_width=True)
-            except: st.info("Sem registros para o período.")
+                else: st.info("Histórico vazio.")
+            except Exception as e: st.error(f"Erro ao processar Dashboard: {e}")
