@@ -9,18 +9,6 @@ import io
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Check-in Logística | Grupo SC", layout="wide", page_icon="📋")
 
-# Custom CSS para melhorar o visual mobile e reduzir espaçamentos
-st.markdown("""
-    <style>
-    [data-testid="stCheckbox"] { margin-bottom: -15px; }
-    .stTextInput { margin-top: -10px; }
-    hr { margin: 10px 0px; }
-    /* Ajuste para as abas aparecerem melhor no celular */
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] { height: 40px; white-space: pre-wrap; font-size: 14px; }
-    </style>
-    """, unsafe_allow_html=True)
-
 # --- CONFIGURAÇÕES ---
 SHEET_ID = "1nYm2aRgruykh2YfXTcpCRuHGIqI0TtAFroMEk_p7Ij8"
 URL_SCRIPT_GOOGLE = "https://script.google.com/macros/s/AKfycbwLDpdSgnGTPwciE-25mUel8Zm46zovwoi9o_AnQrkkKUIOfRK6EuPH3YVD0M0TrBJY2Q/exec"
@@ -46,15 +34,15 @@ def verificar_liberacao_especial():
         return True if str(df.iloc[0, 1]).strip().upper() == "ON" else False
     except: return False
 
-def formatar_nome_curto(nome):
-    partes = str(nome).split()
-    return " ".join(partes[:2]) if len(partes) > 1 else nome
-
 # --- INICIALIZAÇÃO DO SESSION STATE ---
-if 'logado' not in st.session_state: st.session_state.logado = False
-if 'usuario' not in st.session_state: st.session_state.usuario = None
-if 'perfil' not in st.session_state: st.session_state.perfil = None
-if 'confirmacao_envio' not in st.session_state: st.session_state.confirmacao_envio = False
+if 'logado' not in st.session_state:
+    st.session_state.logado = False
+if 'usuario' not in st.session_state:
+    st.session_state.usuario = None
+if 'perfil' not in st.session_state:
+    st.session_state.perfil = None
+if 'confirmacao_envio' not in st.session_state:
+    st.session_state.confirmacao_envio = False
 
 # ==========================================
 # ÁREA DE ACESSO (LOGIN)
@@ -92,6 +80,9 @@ if not st.session_state.logado:
                 st.rerun()
             else: st.error("Acesso Negado.")
 
+# ==========================================
+# SISTEMA PÓS-LOGIN
+# ==========================================
 else:
     c1, c2 = st.columns([5, 1])
     c1.write(f"Usuário: **{st.session_state.usuario}**")
@@ -105,6 +96,7 @@ else:
         
         if st.session_state.confirmacao_envio:
             st.success("### ✅ DADOS SALVOS COM SUCESSO!")
+            st.info("A planilha foi atualizada com a data e hora do envio.")
             if st.button("Fazer Nova Chamada / Atualizar"):
                 st.session_state.confirmacao_envio = False
                 st.rerun()
@@ -123,51 +115,62 @@ else:
         st.divider()
         is_extra = verificar_liberacao_especial()
         
+        # Carregamento da lista
         try:
             url_lista = get_sheet_url(lider_nome)
             df_lista = pd.read_csv(url_lista)
             
             with st.form("chamada_lider"):
-                st.subheader(f"Chamada - {lider_nome} " + ("(EXTRA)" if is_extra else "(NORMAL)"))
+                st.subheader(f"Chamada - {lider_nome} " + ("(MODO HORA EXTRA)" if is_extra else "(NORMAL)"))
                 dados_para_envio = []
+                cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
+                
+                h = st.columns(cols)
+                h[0].write("**MAT**"); h[1].write("**NOME**")
+                if is_extra: h[2].write("**HE**"); h[3].write("**FRT**"); h[4].write("**OBS**")
+                else: h[2].write("**PRES**"); h[3].write("**OBS**")
 
                 for i, row in df_lista.iterrows():
                     if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
                     
+                    # --- FILTRO DE FÉRIAS APLICADO ---
                     if len(row) > 9 and pd.notna(row.iloc[9]):
                         if str(row.iloc[9]).strip() != "" and str(row.iloc[9]).lower() != "nan":
                             continue
 
-                    nome_completo = str(row.iloc[0])
-                    nome_curto = formatar_nome_curto(nome_completo)
-                    matricula = str(row.iloc[4])
-                    
+                    nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
+                    ln = st.columns(cols)
+                    ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
                     r_he, r_fr, r_pr = "Não", "Não", "FALTA"
-                    
-                    # Usando o nome diretamente como texto do checkbox. 
-                    # Impede a quebra de linha (stacking) no celular e força o [ ] a ficar sempre na frente.
+
                     if is_extra:
-                        if st.checkbox(f"⚡ HE - **{nome_curto}** `{matricula}`", key=f"he_{i}"): r_he = "Sim"
-                        if st.checkbox(f"🚌 Fretado", key=f"fr_{i}"): r_fr = "Sim"
+                        if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
+                        if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
+                        r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
                         r_pr = "OK"
                     else:
-                        if st.checkbox(f"**{nome_curto}** `{matricula}`", key=f"pr_{i}"): r_pr = "OK"
-
-                    # Campo de observação travado logo abaixo
-                    r_obs = st.text_input("Obs:", key=f"ob_{i}", label_visibility="collapsed", placeholder="Observação...")
-                    st.markdown("---")
+                        if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
+                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
                     
-                    dados_para_envio.append({"matricula": matricula, "nome": nome_completo, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
+                    dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
-                if st.form_submit_button("✅ FINALIZAR E ENVIAR", use_container_width=True):
-                    requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "presenca_completa", "lider": lider_nome, "lista": dados_para_envio, "is_extra": is_extra})
-                    st.session_state.confirmacao_envio = True
-                    st.rerun()
-        except: st.info("Carregando...")
+                if st.form_submit_button("✅ FINALIZAR E ENVIAR"):
+                    with st.spinner("Enviando para o Google Sheets..."):
+                        resp = requests.post(URL_SCRIPT_GOOGLE, json={
+                            "tipo": "presenca_completa", 
+                            "lider": lider_nome, 
+                            "lista": dados_para_envio,
+                            "is_extra": is_extra 
+                        })
+                        if resp.status_code == 200:
+                            st.session_state.confirmacao_envio = True
+                            st.rerun()
+                        else:
+                            st.error("Erro ao conectar com o servidor.")
+        except Exception as e:
+            st.info("Aguardando carregamento da lista...")
 
-    # ==========================================
-    # PERFIL ADMIN (RESTAURADO E INTACTO)
-    # ==========================================
+    # --- PERFIL ADMIN ---
     elif st.session_state.perfil == "Admin":
         t1, t2, t3, t4 = st.tabs(["Monitoramento", "Pendentes", "Ferramentas", "📊 Dashboard"])
 
@@ -178,7 +181,8 @@ else:
                     df_check = pd.read_csv(get_sheet_url(l))
                     horarios = df_check.iloc[:, 5].dropna().astype(str)
                     horarios = horarios[horarios.str.strip() != ""]
-                    if not horarios.empty: st.success(f"✅ **{l}**: {horarios.iloc[0]}")
+                    if not horarios.empty:
+                        st.success(f"✅ **{l}**: Concluído às {horarios.iloc[0]}")
                     else: st.error(f"❌ **{l}**: Pendente")
                 except: st.warning(f"⚠️ **{l}**: Sem dados.")
 
@@ -202,7 +206,7 @@ else:
                     out = io.BytesIO()
                     with pd.ExcelWriter(out, engine='xlsxwriter') as wr: df_rel.to_excel(wr, index=False)
                     st.download_button("⬇️ Salvar Excel", out.getvalue(), "Historico.xlsx")
-                except: st.error("Erro ao gerar arquivo.")
+                except: st.error("Erro ao gerar histórico.")
 
             if st.button("🚀 Baixar HORA EXTRA Atual"):
                 try:
@@ -210,8 +214,9 @@ else:
                     out_he = io.BytesIO()
                     with pd.ExcelWriter(out_he, engine='xlsxwriter') as wr: df_he.to_excel(wr, index=False)
                     st.download_button("⬇️ Salvar Excel HE", out_he.getvalue(), "Transporte_HE.xlsx")
-                except: st.error("Aba vazia.")
+                except: st.error("Aba HORA EXTRA vazia.")
 
+            st.divider()
             if st.button("🧹 Limpar Turno (Reset)"):
                 requests.post(URL_SCRIPT_GOOGLE, json={"tipo": "limpar_tudo"})
                 st.rerun()
@@ -221,6 +226,7 @@ else:
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
+                    # Correção de Datas
                     df_h['Data_DT'] = pd.to_datetime(df_h.iloc[:, 0], dayfirst=True, errors='coerce').dt.date
                     df_h = df_h.dropna(subset=['Data_DT'])
                     
@@ -234,21 +240,40 @@ else:
                         resumo_lideres = []
                         for l in LIDERES:
                             try:
+                                # Pega a base total do líder para saber o denominador
                                 df_base = pd.read_csv(get_sheet_url(l))
+                                
+                                # --- FILTRO DE FÉRIAS APLICADO NO DASHBOARD ---
                                 if len(df_base.columns) > 9:
                                     df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "")]
                                 
                                 total_colab_base = len(df_base[df_base.iloc[:, 0].notna()])
+                                
+                                # Filtra histórico desse líder
                                 dados_lider = df_f[df_f.iloc[:, 4] == l]
                                 dias_chamada = dados_lider.iloc[:, 0].nunique()
                                 total_faltas = len(dados_lider[dados_lider.iloc[:, 5] == "FALTA"])
+                                total_presencas = len(dados_lider[dados_lider.iloc[:, 5] == "OK"])
                                 
                                 if dias_chamada > 0 and total_colab_base > 0:
+                                    # Cálculo: Faltas / (Total Colaboradores * Dias de Chamada)
                                     perc_abs = (total_faltas / (total_colab_base * dias_chamada)) * 100
-                                    resumo_lideres.append({"Líder": l, "Base": total_colab_base, "Dias": dias_chamada, "Faltas": total_faltas, "% Abs": f"{perc_abs:.2f}%"})
+                                    resumo_lideres.append({
+                                        "Líder": l,
+                                        "Colab_Base": total_colab_base,
+                                        "Dias": dias_chamada,
+                                        "Faltas": total_faltas,
+                                        "Presenças": total_presencas,
+                                        "% Absenteísmo": f"{perc_abs:.2f}%"
+                                    })
                             except: continue
                         
-                        if resumo_lideres: st.table(pd.DataFrame(resumo_lideres))
+                        if resumo_lideres:
+                            st.table(pd.DataFrame(resumo_lideres))
+                        
+                        st.subheader("🔍 Histórico Detalhado")
                         st.dataframe(df_f, use_container_width=True)
-                else: st.info("Sem registros no histórico.")
-            except Exception as e: st.error(f"Erro no Dashboard: {e}")
+                else:
+                    st.info("Sem registros no histórico.")
+            except Exception as e:
+                st.error(f"Erro no Dashboard: {e}")
