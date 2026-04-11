@@ -123,7 +123,10 @@ else:
             with st.form("chamada_lider"):
                 st.subheader(f"Chamada - {lider_nome} " + ("(MODO HORA EXTRA)" if is_extra else "(NORMAL)"))
                 dados_para_envio = []
-                cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
+                
+                # --- AJUSTE DE LAYOUT FLEX PARA MOBILE ---
+                # Aumentamos o peso do NOME (6 ou 7) e reduzimos MAT e OBS (1)
+                cols = [1, 6, 1, 1, 1] if is_extra else [1, 7, 1.5, 1]
                 
                 h = st.columns(cols)
                 h[0].write("**MAT**"); h[1].write("**NOME**")
@@ -133,24 +136,26 @@ else:
                 for i, row in df_lista.iterrows():
                     if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
                     
-                    # --- FILTRO DE FÉRIAS APLICADO ---
+                    # Filtro de Férias (Coluna 10 / Índice 9)
                     if len(row) > 9 and pd.notna(row.iloc[9]):
                         if str(row.iloc[9]).strip() != "" and str(row.iloc[9]).lower() != "nan":
                             continue
 
                     nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
                     ln = st.columns(cols)
-                    ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
+                    ln[0].write(f"`{matricula}`")
+                    ln[1].write(nome_colab)
                     r_he, r_fr, r_pr = "Não", "Não", "FALTA"
 
                     if is_extra:
                         if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
                         if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
-                        r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
+                        # Placeholder adicionado para economizar espaço visual
+                        r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed", placeholder="Obs...")
                         r_pr = "OK"
                     else:
                         if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
-                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
+                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed", placeholder="Obs...")
                     
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
@@ -226,7 +231,6 @@ else:
             try:
                 df_h = pd.read_csv(get_sheet_url("Historico"))
                 if not df_h.empty:
-                    # Correção de Datas
                     df_h['Data_DT'] = pd.to_datetime(df_h.iloc[:, 0], dayfirst=True, errors='coerce').dt.date
                     df_h = df_h.dropna(subset=['Data_DT'])
                     
@@ -240,37 +244,27 @@ else:
                         resumo_lideres = []
                         for l in LIDERES:
                             try:
-                                # Pega a base total do líder para saber o denominador
                                 df_base = pd.read_csv(get_sheet_url(l))
-                                
-                                # --- FILTRO DE FÉRIAS APLICADO NO DASHBOARD ---
                                 if len(df_base.columns) > 9:
                                     df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "")]
                                 
                                 total_colab_base = len(df_base[df_base.iloc[:, 0].notna()])
-                                
-                                # Filtra histórico desse líder
                                 dados_lider = df_f[df_f.iloc[:, 4] == l]
                                 dias_chamada = dados_lider.iloc[:, 0].nunique()
                                 total_faltas = len(dados_lider[dados_lider.iloc[:, 5] == "FALTA"])
                                 total_presencas = len(dados_lider[dados_lider.iloc[:, 5] == "OK"])
                                 
                                 if dias_chamada > 0 and total_colab_base > 0:
-                                    # Cálculo: Faltas / (Total Colaboradores * Dias de Chamada)
                                     perc_abs = (total_faltas / (total_colab_base * dias_chamada)) * 100
                                     resumo_lideres.append({
-                                        "Líder": l,
-                                        "Colab_Base": total_colab_base,
-                                        "Dias": dias_chamada,
-                                        "Faltas": total_faltas,
-                                        "Presenças": total_presencas,
+                                        "Líder": l, "Colab_Base": total_colab_base, "Dias": dias_chamada,
+                                        "Faltas": total_faltas, "Presenças": total_presencas,
                                         "% Absenteísmo": f"{perc_abs:.2f}%"
                                     })
                             except: continue
                         
                         if resumo_lideres:
                             st.table(pd.DataFrame(resumo_lideres))
-                        
                         st.subheader("🔍 Histórico Detalhado")
                         st.dataframe(df_f, use_container_width=True)
                 else:
