@@ -123,10 +123,7 @@ else:
             with st.form("chamada_lider"):
                 st.subheader(f"Chamada - {lider_nome} " + ("(MODO HORA EXTRA)" if is_extra else "(NORMAL)"))
                 dados_para_envio = []
-                
-                # --- AJUSTE DE LAYOUT FLEX PARA MOBILE ---
-                # Aumentamos o peso do NOME (6 ou 7) e reduzimos MAT e OBS (1)
-                cols = [1, 6, 1, 1, 1] if is_extra else [1, 7, 1.5, 1]
+                cols = [1, 3, 1, 1, 2] if is_extra else [1, 3, 1, 2]
                 
                 h = st.columns(cols)
                 h[0].write("**MAT**"); h[1].write("**NOME**")
@@ -136,26 +133,23 @@ else:
                 for i, row in df_lista.iterrows():
                     if pd.isna(row.iloc[0]) and pd.isna(row.iloc[4]): continue 
                     
-                    # Filtro de Férias (Coluna 10 / Índice 9)
-                    if len(row) > 9 and pd.notna(row.iloc[9]):
-                        if str(row.iloc[9]).strip() != "" and str(row.iloc[9]).lower() != "nan":
-                            continue
-
+                    # --- NOVA FUNÇÃO: OCULTAR FÉRIAS ---
+                    if len(row) > 9 and pd.notna(row.iloc[9]) and str(row.iloc[9]).strip() != "":
+                        continue
+                    
                     nome_colab = str(row.iloc[0]); matricula = str(row.iloc[4])
                     ln = st.columns(cols)
-                    ln[0].write(f"`{matricula}`")
-                    ln[1].write(nome_colab)
+                    ln[0].write(f"`{matricula}`"); ln[1].write(nome_colab)
                     r_he, r_fr, r_pr = "Não", "Não", "FALTA"
 
                     if is_extra:
                         if ln[2].checkbox("⚡", key=f"he_{i}"): r_he = "Sim"
                         if ln[3].checkbox("🚌", key=f"fr_{i}"): r_fr = "Sim"
-                        # Placeholder adicionado para economizar espaço visual
-                        r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed", placeholder="Obs...")
+                        r_obs = ln[4].text_input("", key=f"ob_{i}", label_visibility="collapsed")
                         r_pr = "OK"
                     else:
                         if ln[2].checkbox("OK", key=f"pr_{i}"): r_pr = "OK"
-                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed", placeholder="Obs...")
+                        r_obs = ln[3].text_input("", key=f"ob_{i}", label_visibility="collapsed")
                     
                     dados_para_envio.append({"matricula": matricula, "nome": nome_colab, "status": r_pr, "he": r_he, "fretado": r_fr, "obs": r_obs})
 
@@ -245,6 +239,8 @@ else:
                         for l in LIDERES:
                             try:
                                 df_base = pd.read_csv(get_sheet_url(l))
+                                
+                                # --- NOVA FUNÇÃO: REMOVER FÉRIAS DA BASE DO DASHBOARD ---
                                 if len(df_base.columns) > 9:
                                     df_base = df_base[df_base.iloc[:, 9].isna() | (df_base.iloc[:, 9].astype(str).str.strip() == "")]
                                 
